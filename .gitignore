@@ -1,0 +1,11 @@
+*~
+\#*
+.\#*
+*.swo
+*.swp
+*.swn
+cabal-dev
+dist
+TAGS
+.shelly
+vendor
