@@ -1,15 +1,14 @@
--- | This module exports functions that allow you to safely use TLS-secured
--- TCP connections established outside a 'P.Proxy' pipeline within pipes
--- streams.
+-- | This module exports functions that allow you to use TLS-secured
+-- TCP connections as streams, as well as utilities to connect to a
+-- TLS-enabled TCP server or running your own.
 --
--- Instead, if want to safely acquire and release resources within the
--- pipeline itself, then you should use the functions exported by
--- "Control.Proxy.TCP.Safe".
+-- If you need to safely connect to a TLS-enabled TCP server or run your own
+-- /within/ a pipes pipeline, then you /must/ use the functions exported from
+-- the module "Control.Proxy.TCP.TLS.Safe" instead.
 --
--- This module re-exports many functions from "Network.Simple.TCP"
+-- This module re-exports many functions from "Network.Simple.TCP.TLS"
 -- module in the @network-simple@ package. You might refer to that
 -- module for more documentation.
-
 
 module Control.Proxy.TCP.TLS (
   -- * Server side
@@ -57,46 +56,50 @@ import           System.Timeout                 (timeout)
 
 -- $client-side
 --
--- The following functions allow you to obtain and use 'NS.Socket's useful to
--- the client side of a TCP connection.
+-- The following functions allow you to obtain and use TLS 'T.Context's useful
+-- to the client side of a TLS-secured TCP connection.
 --
--- Here's how you could run a TCP client:
+-- Here's how you could run a simple TLS-secured TCP client:
 --
--- > connect "www.example.org" "80" $ \(connectionSocket, remoteAddr) -> do
--- >   putStrLn $ "Connection established to " ++ show remoteAddr
--- >   -- now you may use connectionSocket as you please within this scope,
--- >   -- possibly with any of the socketReadS, nsocketReadS or socketWriteD
--- >   -- proxies explained below.
+-- > settings <- getDefaultClientSettings
+-- >
+-- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
+-- >   putStrLn $ "Secure connection established to " ++ show remoteAddr
+-- >   -- now you may use tlsCtx as you please within this scope, possibly with
+-- >   -- the socketReadS, nsocketReadS or socketWriteD proxies explained below.
 
 --------------------------------------------------------------------------------
 
 -- $server-side
 --
--- The following functions allow you to obtain and use 'NS.Socket's useful to
--- the server side of a TCP connection.
+-- The following functions allow you to obtain and use TLS 'T.Context's useful
+-- to the server side of a TLS-secured TCP connection.
 --
--- Here's how you could run a TCP server that handles in different threads each
--- incoming connection to port @8000@ at address @127.0.0.1@:
+-- Here's how you could run a simple TLS-secured TCP server that handles in ]
+-- different threads each incoming connection to port @4433@ at hostname
+-- @example.org@. You will need a X509 certificate and a private key appropiate
+-- to be used at that hostname.
 --
--- > listen (Host "127.0.0.1") "8000" $ \(listeningSocket, listeningAddr) -> do
--- >   putStrLn $ "Listening for incoming connections at " ++ show listeningAddr
--- >   forever . acceptFork listeningSocket $ \(connectionSocket, remoteAddr) -> do
--- >     putStrLn $ "Connection established from " ++ show remoteAddr
--- >     -- now you may use connectionSocket as you please within this scope,
--- >     -- possibly with any of the socketReadS, nsocketReadS or socketWriteD
--- >     -- proxies explained below.
+-- > import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
+-- >
+-- > cert <- fileReadCertificate "~/example.org.crt"
+-- > pkey <- fileReadPrivateKey  "~/example.org.key"
+-- > let settings = serverSettings cert pkey Nothing
+-- >
+-- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
+-- >   putStrLn $ "Secure connection established from " ++ show remoteAddr
+-- >   -- now you may use tlsCtx as you please within this scope, possibly with
+-- >   -- the socketReadS, nsocketReadS or socketWriteD proxies explained below.
 --
--- If you keep reading you'll discover there are different ways to achieve
--- the same, some ways more general than others. The above one was just an
--- example using a pretty general approach, you are encouraged to use simpler
--- approaches such as 'serve' if those suit your needs.
+-- If you need to control the way your server runs, then you can use more
+-- advanced functions such as 'listen', 'accept' and 'acceptFork'.
 
 --------------------------------------------------------------------------------
 
 -- $socket-streaming
 --
--- Once you have a connected 'NS.Socket', you can use the following 'P.Proxy's
--- to interact with the other connection end using streams.
+-- Once you have an established TLS connection 'T.Context', then you can use the
+-- following 'P.Proxy's to interact with the other connection end using streams.
 
 -- | Receives bytes from the remote end sends them downstream.
 --
@@ -115,7 +118,6 @@ tlsReadS nbytes ctx () = P.runIdentityP loop where
         Just bs -> P.respond bs >> loop
         Nothing -> return ()
 {-# INLINABLE tlsReadS #-}
-
 
 -- | Just like 'socketReadS', except each request from downstream specifies the
 -- maximum number of bytes to receive.
@@ -210,6 +212,8 @@ tlsWriteTimeoutD wait ctx = loop where
 
 --------------------------------------------------------------------------------
 
+-- | Receives up to a limited number of bytes from the given 'T.Context'.
+-- Returns 'Nothing' on EOF.
 recvN :: T.Context -> Int -> IO (Maybe B.ByteString)
 recvN ctx nbytes = do
     ebs <- E.try (T.backendRecv (T.ctxConnection ctx) nbytes)
@@ -219,3 +223,4 @@ recvN ctx nbytes = do
       Left T.Error_EOF     -> return Nothing
       Left e               -> E.throwIO e
 {-# INLINE recvN #-}
+

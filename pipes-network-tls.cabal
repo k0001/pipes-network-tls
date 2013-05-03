@@ -19,11 +19,11 @@ description:
   .
   This package is organized using the following namespaces:
   .
-  * "Control.Proxy.TLS.TCP" exports @pipes@ proxies and functions to
+  * "Control.Proxy.TCP.TLS" exports @pipes@ proxies and functions to
   deal with TLS-secured TCP connections. Such proxies don't acquire nor
   release new resources within a proxy pipeline.
   .
-  * "Control.Proxy.TLS.TCP.Safe" exports @pipes-safe@ proxies and
+  * "Control.Proxy.TCP.TLS.Safe" exports @pipes-safe@ proxies and
   functions to deal with TLS-secured TCP connections. Such proxies may
   safely acquire and release resources within a pipeline, using the
   facilities provided by the @pipes-safe@ package.
