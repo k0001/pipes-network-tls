@@ -94,6 +94,9 @@ connect
   -> NS.HostName                   -- ^Server hostname.
   -> NS.ServiceName                -- ^Server service port.
   -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
+                          -- ^Computation to run in a different thread
+                          -- once a TLS-secured connection is established. Takes
+                          -- the TLS connection context and remote end address.
   -> P.ExceptionP p a' a b' b m r
 connect morph cs h p k = do
     conn <- P.hoist morph . P.tryIO $ S.connectTls cs h p
@@ -208,10 +211,10 @@ serve
   -> S.HostPreference              -- ^Preferred host to bind.
   -> NS.ServiceName                -- ^Service port to bind.
   -> ((T.Context, NS.SockAddr) -> IO ())
-                                   -- ^Computation to run in a different thread
-                                   -- once an incoming connection is accepted.
-                                   -- Takes the connection socket and remote end
-                                   -- address.
+                          -- ^Computation to run in a different thread
+                          -- once an incomming connection is accepted and a
+                          -- TLS-secured communication is established. Takes the
+                          -- TLS connection context and remote end address.
   -> P.ExceptionP p a' a b' b m r
 serve morph ss hp port k = do
    listen morph hp port $ \(lsock,_) -> do
@@ -228,9 +231,10 @@ accept
   -> S.ServerSettings              -- ^TLS settings.
   -> NS.Socket                     -- ^Listening and bound socket.
   -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
-                                   -- ^Computation to run once an incoming
-                                   -- connection is accepted. Takes the
-                                   -- connection socket and remote end address.
+                          -- ^Computation to run once an incomming connection is
+                          -- accepted and a TLS-secured communication is
+                          -- established. Takes the TLS connection context and
+                          -- remote end address.
   -> P.ExceptionP p a' a b' b m r
 accept morph ss lsock k = do
     conn <- P.hoist morph . P.tryIO $ S.acceptTls ss lsock
@@ -247,10 +251,10 @@ acceptFork
   -> S.ServerSettings              -- ^TLS settings.
   -> NS.Socket                     -- ^Listening and bound socket.
   -> ((T.Context, NS.SockAddr) -> IO ())
-                                  -- ^Computation to run in a different thread
-                                  -- once an incoming connection is accepted.
-                                  -- Takes the connection socket and remote end
-                                  -- address.
+                          -- ^Computation to run in a different thread
+                          -- once an incomming connection is accepted and a
+                          -- TLS-secured communication is established. Takes the
+                          -- TLS connection context and remote end address.
   -> P.ExceptionP p a' a b' b m ThreadId
 acceptFork morph ss lsock k = do
     conn <- P.hoist morph (P.tryIO (S.acceptTls ss lsock))

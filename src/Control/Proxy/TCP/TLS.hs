@@ -37,6 +37,9 @@ module Control.Proxy.TCP.TLS (
 
   -- * Exports
   , S.HostPreference(..)
+  , S.serverSettings
+  , S.clientSettings
+  , S.getDefaultClientSettings
   , Timeout(..)
   ) where
 
