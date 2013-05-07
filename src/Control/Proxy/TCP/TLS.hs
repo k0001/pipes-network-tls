@@ -24,7 +24,7 @@ module Control.Proxy.TCP.TLS (
   -- $client-side
   , S.connect
 
-  -- * Socket streams
+  -- * TLS context streams
   -- $socket-streaming
   , tlsReadS
   , ntlsReadS
@@ -40,11 +40,11 @@ module Control.Proxy.TCP.TLS (
   , Timeout(..)
   ) where
 
-import qualified Control.Exception              as E
 import           Control.Monad.Trans.Class
 import qualified Control.Proxy                  as P
-import qualified Control.Proxy.Trans.Either     as PE
 import           Control.Proxy.TCP              (Timeout(..))
+import           Control.Proxy.TCP.TLS.Internal (recvN)
+import qualified Control.Proxy.Trans.Either     as PE
 import qualified Data.ByteString                as B
 import qualified Data.ByteString.Lazy           as BL
 import           Data.Monoid
@@ -209,18 +209,4 @@ tlsWriteTimeoutD wait ctx = loop where
         Nothing -> PE.throw ex
     ex = Timeout $ "tlsWriteTimeoutD: " <> show wait <> " microseconds."
 {-# INLINABLE tlsWriteTimeoutD #-}
-
---------------------------------------------------------------------------------
-
--- | Receives up to a limited number of bytes from the given 'T.Context'.
--- Returns 'Nothing' on EOF.
-recvN :: T.Context -> Int -> IO (Maybe B.ByteString)
-recvN ctx nbytes = do
-    ebs <- E.try (T.backendRecv (T.ctxConnection ctx) nbytes)
-    case ebs of
-      Right bs | B.null bs -> return Nothing
-               | otherwise -> return (Just bs)
-      Left T.Error_EOF     -> return Nothing
-      Left e               -> E.throwIO e
-{-# INLINE recvN #-}
 
