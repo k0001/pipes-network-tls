@@ -68,7 +68,7 @@ import           System.Timeout                  (timeout)
 --
 -- Here's how you could run a simple TLS-secured TCP client:
 --
--- > import Control.Proxy.TCP.TLS
+-- > import Control.Proxy.TCP.TLS.Safe
 -- >
 -- > settings <- getDefaultClientSettings
 -- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
@@ -178,7 +178,7 @@ connectWriteD mwait cs hp port x = do
 -- @example.org@. You will need a X509 certificate and a private key appropiate
 -- to be used at that hostname.
 --
--- > import Control.Proxy.TCP.TLS
+-- > import Control.Proxy.TCP.TLS.Safe
 -- > import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
 -- >
 -- > cert <- fileReadCertificate "~/example.org.crt"
