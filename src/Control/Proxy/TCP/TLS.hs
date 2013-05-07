@@ -43,10 +43,8 @@ module Control.Proxy.TCP.TLS (
 import           Control.Monad.Trans.Class
 import qualified Control.Proxy                  as P
 import           Control.Proxy.TCP              (Timeout(..))
-import           Control.Proxy.TCP.TLS.Internal (recvN)
 import qualified Control.Proxy.Trans.Either     as PE
 import qualified Data.ByteString                as B
-import qualified Data.ByteString.Lazy           as BL
 import           Data.Monoid
 import qualified Network.Simple.TCP.TLS         as S
 import qualified Network.TLS                    as T
@@ -55,9 +53,6 @@ import           System.Timeout                 (timeout)
 --------------------------------------------------------------------------------
 
 -- $client-side
---
--- The following functions allow you to obtain and use TLS 'T.Context's useful
--- to the client side of a TLS-secured TCP connection.
 --
 -- Here's how you could run a simple TLS-secured TCP client:
 --
@@ -73,9 +68,6 @@ import           System.Timeout                 (timeout)
 --------------------------------------------------------------------------------
 
 -- $server-side
---
--- The following functions allow you to obtain and use TLS 'T.Context's useful
--- to the server side of a TLS-secured TCP connection.
 --
 -- Here's how you could run a simple TLS-secured TCP server that handles in ]
 -- different threads each incoming connection to port @4433@ at hostname
@@ -115,7 +107,7 @@ tlsReadS
   -> () -> P.Producer p B.ByteString IO ()
 tlsReadS nbytes ctx () = P.runIdentityP loop where
     loop = do
-      mbs <- lift $ recvN ctx nbytes
+      mbs <- lift (S.recv ctx nbytes)
       case mbs of
         Just bs -> P.respond bs >> loop
         Nothing -> return ()
@@ -129,7 +121,7 @@ ntlsReadS
   -> Int -> P.Server p Int B.ByteString IO ()
 ntlsReadS ctx = P.runIdentityK loop where
     loop nbytes = do
-      mbs <- lift $ recvN ctx nbytes
+      mbs <- lift (S.recv ctx nbytes)
       case mbs of
         Just bs -> P.respond bs >>= loop
         Nothing -> return ()
@@ -146,7 +138,7 @@ tlsWriteD
 tlsWriteD ctx = P.runIdentityK loop where
     loop x = do
       a <- P.request x
-      lift $ T.sendData ctx (BL.fromChunks [a])
+      lift (S.send ctx a)
       P.respond a >>= loop
 {-# INLINABLE tlsWriteD #-}
 
@@ -168,7 +160,7 @@ tlsReadTimeoutS
   -> () -> P.Producer (PE.EitherP Timeout p) B.ByteString IO ()
 tlsReadTimeoutS wait nbytes ctx () = loop where
     loop = do
-      mmbs <- lift . timeout wait $ recvN ctx nbytes
+      mmbs <- lift (timeout wait (S.recv ctx nbytes))
       case mmbs of
         Just (Just bs) -> P.respond bs >> loop
         Just Nothing   -> return ()
@@ -186,7 +178,7 @@ ntlsReadTimeoutS
   -> Int -> P.Server (PE.EitherP Timeout p) Int B.ByteString IO ()
 ntlsReadTimeoutS wait ctx = loop where
     loop nbytes = do
-      mmbs <- lift . timeout wait $ recvN ctx nbytes
+      mmbs <- lift (timeout wait (S.recv ctx nbytes))
       case mmbs of
         Just (Just bs) -> P.respond bs >>= loop
         Just Nothing   -> return ()
@@ -205,7 +197,7 @@ tlsWriteTimeoutD
 tlsWriteTimeoutD wait ctx = loop where
     loop x = do
       a <- P.request x
-      m <- lift . timeout wait $ T.sendData ctx (BL.fromChunks [a])
+      m <- lift (timeout wait (S.send ctx a))
       case m of
         Just () -> P.respond a >>= loop
         Nothing -> PE.throw ex

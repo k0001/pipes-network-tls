@@ -47,6 +47,5 @@ library
     exposed-modules:
         Control.Proxy.TCP.TLS
         Control.Proxy.TCP.TLS.Safe
-    other-modules:
         Control.Proxy.TCP.TLS.Internal
     ghc-options: -Wall -fno-warn-unused-do-bind
