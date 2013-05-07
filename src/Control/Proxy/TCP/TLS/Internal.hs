@@ -1,3 +1,6 @@
+-- | This module exports functions not intended for public use and subject to
+-- change in the future without notice.
+
 module Control.Proxy.TCP.TLS.Internal (
     recvN
   ) where

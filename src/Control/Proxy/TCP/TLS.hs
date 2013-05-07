@@ -61,6 +61,8 @@ import           System.Timeout                 (timeout)
 --
 -- Here's how you could run a simple TLS-secured TCP client:
 --
+-- > import Network.Simple.TCP.TLS (getDefaultClientSettings)
+-- >
 -- > settings <- getDefaultClientSettings
 -- >
 -- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
