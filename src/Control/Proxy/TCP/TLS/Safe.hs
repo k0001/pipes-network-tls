@@ -48,17 +48,17 @@ module Control.Proxy.TCP.TLS.Safe (
 
 
 import           Control.Concurrent              (forkIO, ThreadId)
+import qualified Control.Exception               as E
 import           Control.Monad
 import qualified Control.Proxy                   as P
 import qualified Control.Proxy.Safe              as P
 import           Control.Proxy.TCP.Safe          (listen)
 import           Control.Proxy.TCP.TLS           (Timeout(..))
-import           Control.Proxy.TCP.TLS.Internal  (useTlsThenClose)
 import qualified Data.ByteString                 as B
 import           Data.Monoid
+import qualified GHC.IO.Exception                as Eg
 import qualified Network.Socket                  as NS
 import qualified Network.Simple.TCP.TLS          as S
-import qualified Network.Simple.TCP.TLS.Internal as Si
 import qualified Network.TLS                     as T
 import           System.Timeout                  (timeout)
 
@@ -100,7 +100,7 @@ connect
   -> P.ExceptionP p a' a b' b m r
 connect morph cs h p k = do
     conn <- P.hoist morph . P.tryIO $ S.connectTls cs h p
-    useTlsThenClose morph k conn
+    useTls morph k conn
 
 --------------------------------------------------------------------------------
 
@@ -238,7 +238,7 @@ accept
   -> P.ExceptionP p a' a b' b m r
 accept morph ss lsock k = do
     conn <- P.hoist morph . P.tryIO $ S.acceptTls ss lsock
-    useTlsThenClose morph k conn
+    useTls morph k conn
 {-# INLINABLE accept #-}
 
 -- | Accept a single incoming TLS-secured TCP connection and use it in a
@@ -258,7 +258,7 @@ acceptFork
   -> P.ExceptionP p a' a b' b m ThreadId
 acceptFork morph ss lsock k = do
     conn <- P.hoist morph (P.tryIO (S.acceptTls ss lsock))
-    P.hoist morph (P.tryIO (forkIO (Si.useTlsThenClose k conn)))
+    P.hoist morph (P.tryIO (forkIO (S.useTls k conn)))
 {-# INLINABLE acceptFork #-}
 
 --------------------------------------------------------------------------------
@@ -435,3 +435,34 @@ tlsWriteD (Just wait) ctx = loop where
     ex = Timeout $ "tlsWriteD: " <> show wait <> " microseconds."
 {-# INLINABLE tlsWriteD #-}
 
+
+
+--------------------------------------------------------------------------------
+-- Internal stuff
+
+
+-- | Perform a TLS 'T.handshake' on the given 'T.Context', then perform the
+-- given action, and at last say 'T.bye' and close the TLS connection, even in
+-- case of exceptions. Like 'S.useTls', except it runs within 'P.ExceptionP'.
+useTls
+  :: (Monad m, P.Proxy p)
+  => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
+  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
+  -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
+useTls morph k conn@(ctx,_) =
+    P.finally morph (contextClose' ctx)
+                    (do P.hoist morph (P.tryIO (T.handshake ctx))
+                        P.finally morph (bye' ctx) (k conn))
+  where
+    -- If the remote end closes the connection first we might get some
+    -- exceptions. These wrappers work around those exceptions.
+    contextClose' = ignoreResourceVanishedErrors . T.contextClose
+    bye'          = ignoreResourceVanishedErrors . T.bye
+
+-- | Perform the given action, swallowing any 'E.IOException' of type
+-- 'Eg.ResourceVanished' if it happens.
+ignoreResourceVanishedErrors :: IO () -> IO ()
+ignoreResourceVanishedErrors = E.handle (\e -> case e of
+    Eg.IOError{} | Eg.ioe_type e == Eg.ResourceVanished -> return ()
+    _ -> E.throwIO e)
+{-# INLINE ignoreResourceVanishedErrors #-}
