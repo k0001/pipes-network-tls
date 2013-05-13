@@ -40,8 +40,8 @@ module Control.Proxy.TCP.TLS.Safe (
 
   -- * Exports
   , S.HostPreference(..)
-  , S.serverSettings
-  , S.clientSettings
+  , S.makeServerSettings
+  , S.makeClientSettings
   , S.getDefaultClientSettings
   , Timeout(..)
   ) where
@@ -183,7 +183,7 @@ connectWriteD mwait cs hp port x = do
 -- >
 -- > cert <- fileReadCertificate "~/example.org.crt"
 -- > pkey <- fileReadPrivateKey  "~/example.org.key"
--- > let settings = serverSettings cert pkey Nothing
+-- > let settings = makeServerSettings cert pkey Nothing
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   tryIO . putStrLn $ "Secure connection established from " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
@@ -292,7 +292,7 @@ acceptFork morph ss lsock k = do
 -- >>> import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
 -- >>> cert <- fileReadCertificate "~/example.org.crt"
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
--- >>> let settings = serverSettings cert pkey Nothing
+-- >>> let settings = makeServerSettings cert pkey Nothing
 -- >>> let src = serveReadS Nothing 4096 settings (Host "example.org") "4433"
 -- >>> runSafeIO . runProxy . runEitherK $ src >-> tryK printD
 serveReadS
@@ -329,7 +329,7 @@ serveReadS mwait nbytes ss hp port () = do
 -- >>> import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
 -- >>> cert <- fileReadCertificate "~/example.org.crt"
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
--- >>> let settings = serverSettings cert pkey Nothing
+-- >>> let settings = makeServerSettings cert pkey Nothing
 -- >>> let dst = serveWriteD Nothing settings (Host "example.org") "4433"
 -- >>> runSafeIO . runProxy . runEitherK $ fromListS ["He","llo\r\n"] >-> dst
 serveWriteD

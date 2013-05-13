@@ -37,8 +37,8 @@ module Control.Proxy.TCP.TLS (
 
   -- * Exports
   , S.HostPreference(..)
-  , S.serverSettings
-  , S.clientSettings
+  , S.makeServerSettings
+  , S.makeClientSettings
   , S.getDefaultClientSettings
   , Timeout(..)
   ) where
@@ -82,7 +82,7 @@ import           System.Timeout                 (timeout)
 -- >
 -- > cert <- fileReadCertificate "~/example.org.crt"
 -- > pkey <- fileReadPrivateKey  "~/example.org.key"
--- > let settings = serverSettings cert pkey Nothing
+-- > let settings = makeServerSettings cert pkey Nothing
 -- >
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   putStrLn $ "Secure connection established from " ++ show remoteAddr
