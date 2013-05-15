@@ -27,12 +27,10 @@ module Control.Proxy.TCP.TLS (
   -- * TLS context streams
   -- $socket-streaming
   , tlsReadS
-  , ntlsReadS
   , tlsWriteD
   -- ** Timeouts
   -- $socket-streaming-timeout
   , tlsReadTimeoutS
-  , ntlsReadTimeoutS
   , tlsWriteTimeoutD
 
   -- * Exports
@@ -99,40 +97,27 @@ import           System.Timeout                 (timeout)
 -- Once you have an established TLS connection 'T.Context', then you can use the
 -- following 'P.Proxy's to interact with the other connection end using streams.
 
--- | Receives bytes from the remote end sends them downstream.
+-- | Receives decrypted bytes from the remote end, sending them downstream.
 --
--- Less than the specified maximum number of bytes might be received at once.
+-- Up to @16384@ decrypted bytes will be received at once. The TLS connection is
+-- automatically renegotiated if a /ClientHello/ message is received.
 --
--- If the remote peer closes its side of the connection, this proxy returns.
+-- If the remote peer closes its side of the connection or EOF is reached,
+-- this proxy returns.
 tlsReadS
   :: P.Proxy p
-  => Int                -- ^Maximum number of bytes to receive at once.
-  -> T.Context          -- ^Established TLS connection context.
+  => T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer p B.ByteString IO ()
-tlsReadS nbytes ctx () = P.runIdentityP loop where
+tlsReadS ctx () = P.runIdentityP loop where
     loop = do
-      mbs <- lift (S.recv ctx nbytes)
+      mbs <- lift (S.recv ctx)
       case mbs of
         Just bs -> P.respond bs >> loop
         Nothing -> return ()
 {-# INLINABLE tlsReadS #-}
 
--- | Just like 'socketReadS', except each request from downstream specifies the
--- maximum number of bytes to receive.
-ntlsReadS
-  :: P.Proxy p
-  => T.Context          -- ^Established TLS connection context.
-  -> Int -> P.Server p Int B.ByteString IO ()
-ntlsReadS ctx = P.runIdentityK loop where
-    loop nbytes = do
-      mbs <- lift (S.recv ctx nbytes)
-      case mbs of
-        Just bs -> P.respond bs >>= loop
-        Nothing -> return ()
-{-# INLINABLE ntlsReadS #-}
-
--- | Sends to the remote end the bytes received from upstream, then forwards
--- such same bytes downstream.
+-- | Encrypts and sends to the remote end the bytes received from upstream,
+-- then forwards such same bytes downstream.
 --
 -- Requests from downstream are forwarded upstream.
 tlsWriteD
@@ -159,36 +144,17 @@ tlsWriteD ctx = P.runIdentityK loop where
 tlsReadTimeoutS
   :: P.Proxy p
   => Int                -- ^Timeout in microseconds (1/10^6 seconds).
-  -> Int                -- ^Maximum number of bytes to receive at once.
   -> T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer (PE.EitherP Timeout p) B.ByteString IO ()
-tlsReadTimeoutS wait nbytes ctx () = loop where
+tlsReadTimeoutS wait ctx () = loop where
     loop = do
-      mmbs <- lift (timeout wait (S.recv ctx nbytes))
+      mmbs <- lift (timeout wait (S.recv ctx))
       case mmbs of
         Just (Just bs) -> P.respond bs >> loop
         Just Nothing   -> return ()
         Nothing        -> PE.throw ex
     ex = Timeout $ "tlsReadTimeoutS: " <> show wait <> " microseconds."
 {-# INLINABLE tlsReadTimeoutS #-}
-
--- | Like 'nsocketReadS', except it throws a 'Timeout' exception in the
--- 'PE.EitherP' proxy transformer if receiving data from the remote end takes
--- more time than specified.
-ntlsReadTimeoutS
-  :: P.Proxy p
-  => Int                -- ^Timeout in microseconds (1/10^6 seconds).
-  -> T.Context          -- ^Established TLS connection context.
-  -> Int -> P.Server (PE.EitherP Timeout p) Int B.ByteString IO ()
-ntlsReadTimeoutS wait ctx = loop where
-    loop nbytes = do
-      mmbs <- lift (timeout wait (S.recv ctx nbytes))
-      case mmbs of
-        Just (Just bs) -> P.respond bs >>= loop
-        Just Nothing   -> return ()
-        Nothing        -> PE.throw ex
-    ex = Timeout $ "ntlsReadTimeoutS: " <> show wait <> " microseconds."
-{-# INLINABLE ntlsReadTimeoutS #-}
 
 -- | Like 'socketWriteD', except it throws a 'Timeout' exception in the
 -- 'PE.EitherP' proxy transformer if sending data to the remote end takes

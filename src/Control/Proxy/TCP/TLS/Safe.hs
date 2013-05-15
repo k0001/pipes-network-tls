@@ -35,7 +35,6 @@ module Control.Proxy.TCP.TLS.Safe (
   -- * Socket streams
   -- $socket-streaming
   , tlsReadS
-  , ntlsReadS
   , tlsWriteD
 
   -- * Exports
@@ -112,8 +111,11 @@ connect morph cs h p k = do
 
 --------------------------------------------------------------------------------
 
--- | Connect to a TLS-secured TCP server and send downstream the bytes received
--- from the remote end.
+-- | Connect to a TLS-secured TCP server and send downstream the decrypted bytes
+-- received from the remote end.
+--
+-- Up to @16384@ decrypted bytes will be received at once. The TLS connection is
+-- automatically renegotiated if a /ClientHello/ message is received.
 --
 -- If an optional timeout is given and receiveing data from the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
@@ -126,22 +128,21 @@ connect morph cs h p k = do
 -- at hostname "example.org" on port 4433:
 --
 -- >>> settings <- getDefaultClientSettings
--- >>> let src = connectReadS Nothing 4096 settings "www.example.org" "4433"
+-- >>> let src = connectReadS Nothing settings "www.example.org" "4433"
 -- >>> runSafeIO . runProxy . runEitherK $ src >-> tryK printD
 connectReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
-  -> Int                -- ^Maximum number of bytes to receive at once.
   -> S.ClientSettings   -- ^TLS settings.
-  -> NS.HostName        -- ^Server host name.
+  -> NS.HostName
   -> NS.ServiceName     -- ^Server service port.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-connectReadS mwait nbytes cs host port () = do
+connectReadS mwait cs host port () = do
    connect id cs host port $ \(ctx,_) -> do
-     tlsReadS mwait nbytes ctx ()
+     tlsReadS mwait ctx ()
 
--- | Connects to a TLS-secured TCP server, sends to the remote end the bytes
--- received from upstream, then forwards such same bytes downstream.
+-- | Connects to a TLS-secured TCP server, encrypts and sends to the remote end
+-- the bytes received from upstream, then forwards such same bytes downstream.
 --
 -- Requests from downstream are forwarded upstream.
 --
@@ -272,7 +273,10 @@ acceptFork morph ss lsock k = do
 --------------------------------------------------------------------------------
 
 -- | Binds a listening TCP socket, accepts a single TLS-secured connection and
--- sends downstream any bytes received from the remote end.
+-- sends downstream any decrypted bytes received from the remote end.
+--
+-- Up to @16384@ decrypted bytes will be received at once. The TLS connection is
+-- automatically renegotiated if a /ClientHello/ message is received.
 --
 -- If an optional timeout is given and receiveing data from the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
@@ -280,7 +284,8 @@ acceptFork morph ss lsock k = do
 --
 -- Less than the specified maximum number of bytes might be received at once.
 --
--- If the remote peer closes its side of the connection, this proxy returns.
+-- If the remote peer closes its side of the connection of EOF is reached,  this
+-- proxy returns.
 --
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
@@ -293,20 +298,19 @@ acceptFork morph ss lsock k = do
 -- >>> cert <- fileReadCertificate "~/example.org.crt"
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
 -- >>> let settings = makeServerSettings cert pkey Nothing
--- >>> let src = serveReadS Nothing 4096 settings (Host "example.org") "4433"
+-- >>> let src = serveReadS Nothing settings (Host "example.org") "4433"
 -- >>> runSafeIO . runProxy . runEitherK $ src >-> tryK printD
 serveReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
-  -> Int                -- ^Maximum number of bytes to receive at once.
   -> S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-serveReadS mwait nbytes ss hp port () = do
+serveReadS mwait ss hp port () = do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
-       tlsReadS mwait nbytes csock ()
+       tlsReadS mwait csock ()
 
 -- | Binds a listening TCP socket, accepts a single TLS-secured connection,
 -- sends to the remote end the bytes received from upstream and then forwards
@@ -365,47 +369,23 @@ serveWriteD mwait ss hp port x = do
 tlsReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
-  -> Int                -- ^Maximum number of bytes to receive at once.
   -> T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-tlsReadS Nothing nbytes ctx () = loop where
+tlsReadS Nothing ctx () = loop where
     loop = do
-      mbs <- P.tryIO (S.recv ctx nbytes)
+      mbs <- P.tryIO (S.recv ctx)
       case mbs of
         Nothing -> return ()
         Just bs -> P.respond bs >> loop
-tlsReadS (Just wait) nbytes ctx () = loop where
+tlsReadS (Just wait) ctx () = loop where
     loop = do
-      mmbs <- P.tryIO (timeout wait (S.recv ctx nbytes))
+      mmbs <- P.tryIO (timeout wait (S.recv ctx))
       case mmbs of
         Nothing        -> P.throw ex
         Just Nothing   -> return ()
         Just (Just bs) -> P.respond bs >> loop
     ex = Timeout $ "tlsReadS: " <> show wait <> " microseconds."
 {-# INLINABLE tlsReadS #-}
-
--- | Just like 'tlsReadS', except each request from downstream specifies the
--- maximum number of bytes to receive.
-ntlsReadS
-  :: P.Proxy p
-  => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
-  -> T.Context          -- ^Established TLS connection context.
-  -> Int -> P.Server (P.ExceptionP p) Int B.ByteString P.SafeIO ()
-ntlsReadS Nothing ctx =  loop where
-    loop nbytes = do
-      mbs <- P.tryIO (S.recv ctx nbytes)
-      case mbs of
-        Nothing -> return ()
-        Just bs -> P.respond bs >>= loop
-ntlsReadS (Just wait) ctx = loop where
-    loop nbytes = do
-      mmbs <- P.tryIO (timeout wait (S.recv ctx nbytes))
-      case mmbs of
-        Nothing        -> P.throw ex
-        Just Nothing   -> return ()
-        Just (Just bs) -> P.respond bs >>= loop
-    ex = Timeout $ "ntlsReadS: " <> show wait <> " microseconds."
-{-# INLINABLE ntlsReadS #-}
 
 -- | Sends to the remote end the bytes received from upstream, then forwards
 -- such same bytes downstream.
