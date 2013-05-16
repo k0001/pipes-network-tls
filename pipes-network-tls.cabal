@@ -48,3 +48,23 @@ library
         Control.Proxy.TCP.TLS
         Control.Proxy.TCP.TLS.Safe
     ghc-options: -Wall -fno-warn-unused-do-bind
+
+
+
+
+------------------------------------------------------------------------
+-- Examples. All built when the 'examples' flag is given.
+
+flag examples
+  description:         Build examples
+  default:             False
+
+executable pipes-network-tls-example-echo
+  if !flag(examples)
+    buildable: False
+  hs-source-dirs:      examples
+  main-is:             tls-echo.hs
+  build-depends:       base, bytestring, network-simple-tls, network,
+                       tls-extra, tls, certificate, network-simple-tls,
+                       pipes, pipes-network-tls
+
