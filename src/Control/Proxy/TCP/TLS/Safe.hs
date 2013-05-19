@@ -47,15 +47,13 @@ module Control.Proxy.TCP.TLS.Safe (
 
 
 import           Control.Concurrent              (forkIO, ThreadId)
-import qualified Control.Exception               as E
 import           Control.Monad
 import qualified Control.Proxy                   as P
 import qualified Control.Proxy.Safe              as P
 import           Control.Proxy.TCP.Safe          (listen)
-import           Control.Proxy.TCP.TLS           (Timeout(..))
+import           Control.Proxy.TCP.TLS.Internal
 import qualified Data.ByteString                 as B
 import           Data.Monoid
-import qualified GHC.IO.Exception                as Eg
 import qualified Network.Socket                  as NS
 import qualified Network.Simple.TCP.TLS          as S
 import qualified Network.TLS                     as T
@@ -121,6 +119,9 @@ connect morph cs h p k = do
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
+-- If the remote peer closes its side of the connection of EOF is reached,  this
+-- proxy returns.
+--
 -- The connection is closed when done or in case of exceptions.
 --
 -- Using this proxy you can write code like the following, which prints whatever
@@ -149,6 +150,8 @@ connectReadS mwait cs host port () = do
 -- If an optional timeout is given and sending data to the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
+--
+-- If the remote peer closes its side of the connection, this proxy returns.
 --
 -- The connection is closed when done or in case of exceptions.
 --
@@ -322,6 +325,8 @@ serveReadS mwait ss hp port () = do
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
+-- If the remote peer closes its side of the connection, this proxy returns.
+--
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
 --
@@ -373,13 +378,13 @@ tlsReadS
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
 tlsReadS Nothing ctx () = loop where
     loop = do
-      mbs <- P.tryIO (S.recv ctx)
+      mbs <- P.tryIO (recv ctx)
       case mbs of
         Nothing -> return ()
         Just bs -> P.respond bs >> loop
 tlsReadS (Just wait) ctx () = loop where
     loop = do
-      mmbs <- P.tryIO (timeout wait (S.recv ctx))
+      mmbs <- P.tryIO (timeout wait (recv ctx))
       case mmbs of
         Nothing        -> P.throw ex
         Just Nothing   -> return ()
@@ -394,24 +399,27 @@ tlsReadS (Just wait) ctx () = loop where
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
+-- If the remote peer closes its side of the connection, this proxy returns.
+--
 -- Requests from downstream are forwarded upstream.
 tlsWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
+  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO ()
 tlsWriteD Nothing ctx = loop where
     loop x = do
       a <- P.request x
-      P.tryIO (S.send ctx a)
-      P.respond a >>= loop
+      ok <- P.tryIO (send ctx a)
+      when ok (P.respond a >>= loop)
 tlsWriteD (Just wait) ctx = loop where
     loop x = do
       a <- P.request x
-      m <- P.tryIO (timeout wait (S.send ctx a))
-      case m of
-        Nothing -> P.throw ex
-        Just () -> P.respond a >>= loop
+      mok <- P.tryIO (timeout wait (send ctx a))
+      case mok of
+        Just True  -> P.respond a >>= loop
+        Just False -> return ()
+        Nothing    -> P.throw ex
     ex = Timeout $ "tlsWriteD: " <> show wait <> " microseconds."
 {-# INLINABLE tlsWriteD #-}
 
@@ -430,19 +438,6 @@ useTls
   -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
   -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
 useTls morph k conn@(ctx,_) =
-    P.finally morph (contextClose' ctx)
+    P.finally morph (contextCloseNoVanish ctx)
                     (do P.hoist morph (P.tryIO (T.handshake ctx))
-                        P.finally morph (bye' ctx) (k conn))
-  where
-    -- If the remote end closes the connection first we might get some
-    -- exceptions. These wrappers work around those exceptions.
-    contextClose' = ignoreResourceVanishedErrors . T.contextClose
-    bye'          = ignoreResourceVanishedErrors . T.bye
-
--- | Perform the given action, swallowing any 'E.IOException' of type
--- 'Eg.ResourceVanished' if it happens.
-ignoreResourceVanishedErrors :: IO () -> IO ()
-ignoreResourceVanishedErrors = E.handle (\e -> case e of
-    Eg.IOError{} | Eg.ioe_type e == Eg.ResourceVanished -> return ()
-    _ -> E.throwIO e)
-{-# INLINE ignoreResourceVanishedErrors #-}
+                        P.finally morph (byeNoVanish ctx) (k conn))

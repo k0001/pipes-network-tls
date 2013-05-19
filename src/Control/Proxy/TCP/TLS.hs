@@ -41,9 +41,10 @@ module Control.Proxy.TCP.TLS (
   , Timeout(..)
   ) where
 
+import           Control.Monad
 import           Control.Monad.Trans.Class
 import qualified Control.Proxy                  as P
-import           Control.Proxy.TCP              (Timeout(..))
+import           Control.Proxy.TCP.TLS.Internal
 import qualified Control.Proxy.Trans.Either     as PE
 import qualified Data.ByteString                as B
 import           Data.Monoid
@@ -110,7 +111,7 @@ tlsReadS
   -> () -> P.Producer p B.ByteString IO ()
 tlsReadS ctx () = P.runIdentityP loop where
     loop = do
-      mbs <- lift (S.recv ctx)
+      mbs <- lift (recv ctx)
       case mbs of
         Just bs -> P.respond bs >> loop
         Nothing -> return ()
@@ -120,15 +121,18 @@ tlsReadS ctx () = P.runIdentityP loop where
 -- then forwards such same bytes downstream.
 --
 -- Requests from downstream are forwarded upstream.
+--
+-- If the remote peer closes its side of the connection or EOF is reached,
+-- this proxy returns.
 tlsWriteD
   :: P.Proxy p
   => T.Context          -- ^Established TLS connection context.
-  -> x -> p x B.ByteString x B.ByteString IO r
+  -> x -> p x B.ByteString x B.ByteString IO ()
 tlsWriteD ctx = P.runIdentityK loop where
     loop x = do
       a <- P.request x
-      lift (S.send ctx a)
-      P.respond a >>= loop
+      ok <- lift (send ctx a)
+      when ok (P.respond a >>= loop)
 {-# INLINABLE tlsWriteD #-}
 
 --------------------------------------------------------------------------------
@@ -148,7 +152,7 @@ tlsReadTimeoutS
   -> () -> P.Producer (PE.EitherP Timeout p) B.ByteString IO ()
 tlsReadTimeoutS wait ctx () = loop where
     loop = do
-      mmbs <- lift (timeout wait (S.recv ctx))
+      mmbs <- lift (timeout wait (recv ctx))
       case mmbs of
         Just (Just bs) -> P.respond bs >> loop
         Just Nothing   -> return ()
@@ -163,14 +167,14 @@ tlsWriteTimeoutD
   :: P.Proxy p
   => Int                -- ^Timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> x -> (PE.EitherP Timeout p) x B.ByteString x B.ByteString IO r
+  -> x -> (PE.EitherP Timeout p) x B.ByteString x B.ByteString IO ()
 tlsWriteTimeoutD wait ctx = loop where
     loop x = do
       a <- P.request x
-      m <- lift (timeout wait (S.send ctx a))
-      case m of
-        Just () -> P.respond a >>= loop
-        Nothing -> PE.throw ex
+      mok <- lift (timeout wait (send ctx a))
+      case mok of
+        Just True  -> P.respond a >>= loop
+        Just False -> return ()
+        Nothing    -> PE.throw ex
     ex = Timeout $ "tlsWriteTimeoutD: " <> show wait <> " microseconds."
 {-# INLINABLE tlsWriteTimeoutD #-}
-
