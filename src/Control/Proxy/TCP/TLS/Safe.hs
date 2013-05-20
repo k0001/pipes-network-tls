@@ -168,7 +168,7 @@ connectWriteD
   -> S.ClientSettings   -- ^TLS settings.
   -> NS.HostName        -- ^Server host name.
   -> NS.ServiceName     -- ^Server service port.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO ()
+  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
 connectWriteD mwait cs hp port x = do
    connect id cs hp port $ \(ctx,_) ->
      tlsWriteD mwait ctx x
@@ -347,7 +347,7 @@ serveWriteD
   -> S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO ()
+  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
 serveWriteD mwait ss hp port x = do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
@@ -378,13 +378,13 @@ tlsReadS
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
 tlsReadS Nothing ctx () = loop where
     loop = do
-      mbs <- P.tryIO (recv ctx)
+      mbs <- P.tryIO (S.recv ctx)
       case mbs of
         Nothing -> return ()
         Just bs -> P.respond bs >> loop
 tlsReadS (Just wait) ctx () = loop where
     loop = do
-      mmbs <- P.tryIO (timeout wait (recv ctx))
+      mmbs <- P.tryIO (timeout wait (S.recv ctx))
       case mmbs of
         Nothing        -> P.throw ex
         Just Nothing   -> return ()
@@ -406,20 +406,19 @@ tlsWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO ()
+  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
 tlsWriteD Nothing ctx = loop where
     loop x = do
       a <- P.request x
-      ok <- P.tryIO (send ctx a)
-      when ok (P.respond a >>= loop)
+      P.tryIO (S.send ctx a)
+      P.respond a >>= loop
 tlsWriteD (Just wait) ctx = loop where
     loop x = do
       a <- P.request x
-      mok <- P.tryIO (timeout wait (send ctx a))
-      case mok of
-        Just True  -> P.respond a >>= loop
-        Just False -> return ()
-        Nothing    -> P.throw ex
+      m <- P.tryIO (timeout wait (S.send ctx a))
+      case m of
+        Just () -> P.respond a >>= loop
+        Nothing -> P.throw ex
     ex = Timeout $ "tlsWriteD: " <> show wait <> " microseconds."
 {-# INLINABLE tlsWriteD #-}
 
