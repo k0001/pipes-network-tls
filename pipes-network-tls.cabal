@@ -70,3 +70,12 @@ executable pipes-network-tls-example-echo
                        tls-extra, tls, certificate, network-simple-tls,
                        pipes, pipes-network-tls
 
+executable pipes-network-tls-example-tunnel
+  if !flag(examples)
+    buildable: False
+  hs-source-dirs:      examples
+  main-is:             tls-tunnel.hs
+  build-depends:       base, bytestring, network-simple-tls, network,
+                       tls-extra, tls, certificate, network-simple-tls,
+                       pipes, pipes-network-tls, async
+
