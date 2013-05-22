@@ -29,12 +29,12 @@ module Control.Proxy.TCP.TLS (
 
   -- * TLS context streams
   -- $socket-streaming
-  , tlsReadS
-  , tlsWriteD
+  , contextReadS
+  , contextWriteD
   -- ** Timeouts
   -- $socket-streaming-timeout
-  , tlsReadTimeoutS
-  , tlsWriteTimeoutD
+  , contextReadTimeoutS
+  , contextWriteTimeoutD
 
   -- * Exports
   , S.HostPreference(..)
@@ -108,17 +108,17 @@ import           System.Timeout                 (timeout)
 --
 -- If the remote peer closes its side of the connection or EOF is reached,
 -- this proxy returns.
-tlsReadS
+contextReadS
   :: P.Proxy p
   => T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer p B.ByteString IO ()
-tlsReadS ctx () = P.runIdentityP loop where
+contextReadS ctx () = P.runIdentityP loop where
     loop = do
       mbs <- lift (S.recv ctx)
       case mbs of
         Just bs -> P.respond bs >> loop
         Nothing -> return ()
-{-# INLINABLE tlsReadS #-}
+{-# INLINABLE contextReadS #-}
 
 -- | Encrypts and sends to the remote end the bytes received from upstream,
 -- then forwards such same bytes downstream.
@@ -127,16 +127,16 @@ tlsReadS ctx () = P.runIdentityP loop where
 --
 -- If the remote peer closes its side of the connection or EOF is reached,
 -- this proxy returns.
-tlsWriteD
+contextWriteD
   :: P.Proxy p
   => T.Context          -- ^Established TLS connection context.
   -> x -> p x B.ByteString x B.ByteString IO r
-tlsWriteD ctx = P.runIdentityK loop where
+contextWriteD ctx = P.runIdentityK loop where
     loop x = do
       a <- P.request x
       lift (S.send ctx a)
       P.respond a >>= loop
-{-# INLINABLE tlsWriteD #-}
+{-# INLINABLE contextWriteD #-}
 
 --------------------------------------------------------------------------------
 
@@ -148,35 +148,35 @@ tlsWriteD ctx = P.runIdentityK loop where
 -- | Like 'socketReadS', except it throws a 'Timeout' exception in the
 -- 'PE.EitherP' proxy transformer if receiving data from the remote end takes
 -- more time than specified.
-tlsReadTimeoutS
+contextReadTimeoutS
   :: P.Proxy p
   => Int                -- ^Timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer (PE.EitherP Timeout p) B.ByteString IO ()
-tlsReadTimeoutS wait ctx () = loop where
+contextReadTimeoutS wait ctx () = loop where
     loop = do
       mmbs <- lift (timeout wait (S.recv ctx))
       case mmbs of
         Just (Just bs) -> P.respond bs >> loop
         Just Nothing   -> return ()
         Nothing        -> PE.throw ex
-    ex = Timeout $ "tlsReadTimeoutS: " <> show wait <> " microseconds."
-{-# INLINABLE tlsReadTimeoutS #-}
+    ex = Timeout $ "contextReadTimeoutS: " <> show wait <> " microseconds."
+{-# INLINABLE contextReadTimeoutS #-}
 
 -- | Like 'socketWriteD', except it throws a 'Timeout' exception in the
 -- 'PE.EitherP' proxy transformer if sending data to the remote end takes
 -- more time than specified.
-tlsWriteTimeoutD
+contextWriteTimeoutD
   :: P.Proxy p
   => Int                -- ^Timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
   -> x -> (PE.EitherP Timeout p) x B.ByteString x B.ByteString IO r
-tlsWriteTimeoutD wait ctx = loop where
+contextWriteTimeoutD wait ctx = loop where
     loop x = do
       a <- P.request x
       m <- lift (timeout wait (S.send ctx a))
       case m of
         Just () -> P.respond a >>= loop
         Nothing -> PE.throw ex
-    ex = Timeout $ "tlsWriteTimeoutD: " <> show wait <> " microseconds."
-{-# INLINABLE tlsWriteTimeoutD #-}
+    ex = Timeout $ "contextWriteTimeoutD: " <> show wait <> " microseconds."
+{-# INLINABLE contextWriteTimeoutD #-}

@@ -6,7 +6,7 @@ module Main (main) where
 import           Control.Applicative
 import           Control.Proxy              ((>->))
 import qualified Control.Proxy              as P
-import           Control.Proxy.TCP.TLS      (tlsReadS, tlsWriteD)
+import           Control.Proxy.TCP.TLS      (contextReadS, contextWriteD)
 import qualified Data.ByteString.Char8      as B
 import           Data.Certificate.X509      (X509)
 import           Data.Char                  (toUpper)
@@ -25,7 +25,7 @@ server cred hp port mcs = do
     let ss = Z.makeServerSettings cred mcs
     Z.serve ss hp port $ \(ctx,caddr) -> do
        putStrLn $ show caddr <> " joined."
-       P.runProxy $ tlsReadS ctx >-> P.mapD (B.map toUpper) >-> tlsWriteD ctx
+       P.runProxy $ contextReadS ctx >-> P.mapD (B.map toUpper) >-> contextWriteD ctx
        putStrLn $ show caddr <> " quit."
 
 main :: IO ()

@@ -34,8 +34,8 @@ module Control.Proxy.TCP.TLS.Safe (
 
   -- * Socket streams
   -- $socket-streaming
-  , tlsReadS
-  , tlsWriteD
+  , contextReadS
+  , contextWriteD
 
   -- * Exports
   , S.HostPreference(..)
@@ -74,7 +74,7 @@ import           System.Timeout                  (timeout)
 -- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
 -- >   tryIO . putStrLn $ "Secure connection established to " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the tlsReadS, ntlsReadS or tlsWriteD proxies explained below.
+-- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
 --
 -- You might prefer to use the simpler but less general solutions offered by
 -- 'connectReadS' and 'connectWriteD', so check those too.
@@ -143,7 +143,7 @@ connectReadS
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
 connectReadS mwait cs host port () = do
    connect id cs host port $ \(ctx,_) -> do
-     tlsReadS mwait ctx ()
+     contextReadS mwait ctx ()
 
 -- | Connects to a TLS-secured TCP server, encrypts and sends to the remote end
 -- the bytes received from upstream, then forwards such same bytes downstream.
@@ -174,7 +174,7 @@ connectWriteD
   -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
 connectWriteD mwait cs hp port x = do
    connect id cs hp port $ \(ctx,_) ->
-     tlsWriteD mwait ctx x
+     contextWriteD mwait ctx x
 
 --------------------------------------------------------------------------------
 
@@ -196,7 +196,7 @@ connectWriteD mwait cs hp port x = do
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   tryIO . putStrLn $ "Secure connection established from " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the tlsReadS, ntlsReadS or tlsWriteD proxies explained below.
+-- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
 --
 -- You might prefer to use the simpler but less general solutions offered by
 -- 'serveReadS' and 'serveWriteD', or if you need to control the way your
@@ -317,7 +317,7 @@ serveReadS
 serveReadS mwait ss hp port () = do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
-       tlsReadS mwait csock ()
+       contextReadS mwait csock ()
 
 -- | Binds a listening TCP socket, accepts a single TLS-secured connection,
 -- sends to the remote end the bytes received from upstream and then forwards
@@ -355,7 +355,7 @@ serveWriteD
 serveWriteD mwait ss hp port x = do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
-       tlsWriteD mwait csock x
+       contextWriteD mwait csock x
 
 --------------------------------------------------------------------------------
 
@@ -375,26 +375,26 @@ serveWriteD mwait ss hp port x = do
 -- Less than the specified maximum number of bytes might be received at once.
 --
 -- If the remote peer closes its side of the connection, this proxy returns.
-tlsReadS
+contextReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-tlsReadS Nothing ctx () = loop where
+contextReadS Nothing ctx () = loop where
     loop = do
       mbs <- P.tryIO (S.recv ctx)
       case mbs of
         Nothing -> return ()
         Just bs -> P.respond bs >> loop
-tlsReadS (Just wait) ctx () = loop where
+contextReadS (Just wait) ctx () = loop where
     loop = do
       mmbs <- P.tryIO (timeout wait (S.recv ctx))
       case mmbs of
         Nothing        -> P.throw ex
         Just Nothing   -> return ()
         Just (Just bs) -> P.respond bs >> loop
-    ex = Timeout $ "tlsReadS: " <> show wait <> " microseconds."
-{-# INLINABLE tlsReadS #-}
+    ex = Timeout $ "contextReadS: " <> show wait <> " microseconds."
+{-# INLINABLE contextReadS #-}
 
 -- | Sends to the remote end the bytes received from upstream, then forwards
 -- such same bytes downstream.
@@ -406,25 +406,25 @@ tlsReadS (Just wait) ctx () = loop where
 -- If the remote peer closes its side of the connection, this proxy returns.
 --
 -- Requests from downstream are forwarded upstream.
-tlsWriteD
+contextWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
   -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
-tlsWriteD Nothing ctx = loop where
+contextWriteD Nothing ctx = loop where
     loop x = do
       a <- P.request x
       P.tryIO (S.send ctx a)
       P.respond a >>= loop
-tlsWriteD (Just wait) ctx = loop where
+contextWriteD (Just wait) ctx = loop where
     loop x = do
       a <- P.request x
       m <- P.tryIO (timeout wait (S.send ctx a))
       case m of
         Just () -> P.respond a >>= loop
         Nothing -> P.throw ex
-    ex = Timeout $ "tlsWriteD: " <> show wait <> " microseconds."
-{-# INLINABLE tlsWriteD #-}
+    ex = Timeout $ "contextWriteD: " <> show wait <> " microseconds."
+{-# INLINABLE contextWriteD #-}
 
 
 

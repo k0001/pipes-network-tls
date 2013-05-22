@@ -36,8 +36,8 @@ runTlsTunnel sS sHp sPort cS cHost cPort = do
         Pt.connect cS cHost cPort $ \(cCtx, cAddr) -> do
             let cMsg = "Secure connection to " <> show cAddr
             putStrLn $ cMsg <> " established."
-            a1 <- A.async . P.runProxy $ Pt.tlsReadS sCtx >-> Pt.tlsWriteD cCtx
-            P.runProxy $ Pt.tlsReadS cCtx >-> Pt.tlsWriteD sCtx
+            a1 <- A.async . P.runProxy $ Pt.contextReadS sCtx >-> Pt.contextWriteD cCtx
+            P.runProxy $ Pt.contextReadS cCtx >-> Pt.contextWriteD sCtx
             A.wait a1
             putStrLn $ cMsg <> " closed."
         putStrLn $ sMsg <> " quit."
