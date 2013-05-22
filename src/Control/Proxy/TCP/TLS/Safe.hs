@@ -86,7 +86,7 @@ import           System.Timeout                  (timeout)
 -- The connection is closed when done or in case of exceptions.
 --
 -- If you prefer to open and close the connection yourself, then use
--- 'S.connectTls' instead"
+-- 'S.connectTls' instead.
 connect
   :: (P.Proxy p, Monad m)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
@@ -190,7 +190,9 @@ connectWriteD mwait cs hp port x = do
 -- >
 -- > cert <- fileReadCertificate "~/example.org.crt"
 -- > pkey <- fileReadPrivateKey  "~/example.org.key"
--- > let settings = makeServerSettings cert pkey Nothing
+-- > let cred = Credential cert pkey []
+-- >     settings = makeServerSettings cred Nothing
+-- >
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   tryIO . putStrLn $ "Secure connection established from " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with

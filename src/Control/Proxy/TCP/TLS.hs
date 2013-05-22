@@ -83,7 +83,8 @@ import           System.Timeout                 (timeout)
 -- >
 -- > cert <- fileReadCertificate "~/example.org.crt"
 -- > pkey <- fileReadPrivateKey  "~/example.org.key"
--- > let settings = makeServerSettings cert pkey Nothing
+-- > let cred = Credential cert pkey []
+-- >     settings = makeServerSettings cred Nothing
 -- >
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   putStrLn $ "Secure connection established from " ++ show remoteAddr
