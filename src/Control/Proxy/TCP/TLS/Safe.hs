@@ -39,19 +39,22 @@ module Control.Proxy.TCP.TLS.Safe (
 
   -- * Exports
   , S.HostPreference(..)
+  , S.Credential(..)
+  , S.ServerSettings
   , S.makeServerSettings
+  , S.ClientSettings
   , S.makeClientSettings
   , S.getDefaultClientSettings
   , Timeout(..)
   ) where
 
 
-import           Control.Concurrent              (forkIO, ThreadId)
+import           Control.Concurrent              (ThreadId)
+import qualified Control.Exception               as E
 import           Control.Monad
 import qualified Control.Proxy                   as P
 import qualified Control.Proxy.Safe              as P
-import           Control.Proxy.TCP.Safe          (listen)
-import           Control.Proxy.TCP.TLS.Internal
+import           Control.Proxy.TCP.Safe          (listen, Timeout(..))
 import qualified Data.ByteString                 as B
 import           Data.Monoid
 import qualified Network.Socket                  as NS
@@ -260,9 +263,7 @@ acceptFork
                           -- TLS-secured communication is established. Takes the
                           -- TLS connection context and remote end address.
   -> P.ExceptionP p a' a b' b m ThreadId
-acceptFork morph ss lsock k = do
-    conn <- P.hoist morph (P.tryIO (S.acceptTls ss lsock))
-    P.hoist morph (P.tryIO (forkIO (S.useTls k conn)))
+acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 {-# INLINABLE acceptFork #-}
 
 --------------------------------------------------------------------------------
@@ -437,6 +438,12 @@ useTls
   -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
   -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
 useTls morph k conn@(ctx,_) =
-    P.finally morph (contextCloseNoVanish ctx)
-                    (do P.hoist morph (P.tryIO (T.handshake ctx))
-                        P.finally morph (byeNoVanish ctx) (k conn))
+    P.finally morph
+       (discardExceptions (T.contextClose ctx))
+       (do P.hoist morph (P.tryIO (T.handshake ctx))
+           P.finally morph (discardExceptions (T.bye ctx)) (k conn))
+
+-- | Dangerous thing: perform the given action ignoring all exceptions.
+discardExceptions :: IO () -> IO ()
+discardExceptions = E.handle (\e -> let _ = e :: E.SomeException in return ())
+

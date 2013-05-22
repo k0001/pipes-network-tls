@@ -46,7 +46,7 @@ module Control.Proxy.TCP.TLS (
 
 import           Control.Monad.Trans.Class
 import qualified Control.Proxy                  as P
-import           Control.Proxy.TCP.TLS.Internal
+import           Control.Proxy.TCP              (Timeout(..))
 import qualified Control.Proxy.Trans.Either     as PE
 import qualified Data.ByteString                as B
 import           Data.Monoid
