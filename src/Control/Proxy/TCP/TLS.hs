@@ -13,7 +13,8 @@
 module Control.Proxy.TCP.TLS (
   -- * Server side
   -- $server-side
-    S.serve
+    S.makeServerSettings
+  , S.serve
   -- ** Listening
   , S.listen
   -- ** Accepting
@@ -22,6 +23,8 @@ module Control.Proxy.TCP.TLS (
 
   -- * Client side
   -- $client-side
+  , S.makeClientSettings
+  , S.getDefaultClientSettings
   , S.connect
 
   -- * TLS context streams
@@ -36,11 +39,8 @@ module Control.Proxy.TCP.TLS (
   -- * Exports
   , S.HostPreference(..)
   , S.Credential(..)
-  , S.ServerSettings
-  , S.makeServerSettings
   , S.ClientSettings
-  , S.makeClientSettings
-  , S.getDefaultClientSettings
+  , S.ServerSettings
   , Timeout(..)
   ) where
 

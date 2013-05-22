@@ -209,8 +209,9 @@ connectWriteD mwait cs hp port x = do
 -- Any acquired network resources are properly closed and discarded when done or
 -- in case of exceptions.
 --
--- Note: This function performs 'listen' and 'acceptFork', so you don't need to
--- perform those manually, nor you need to manually perform a TLS 'handshake'.
+-- Note: This function binds a listening socket, accepts an connection, performs
+-- a TLS handshake and then safely closes the connection. You don't need to
+-- perform any of those steps manually.
 serve
   :: (P.Proxy p, Monad m)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
