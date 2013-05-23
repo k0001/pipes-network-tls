@@ -436,6 +436,9 @@ contextWriteD (Just wait) ctx = loop where
 -- | Perform a TLS 'T.handshake' on the given 'T.Context', then perform the
 -- given action, and at last say 'T.bye' and close the TLS connection, even in
 -- case of exceptions. Like 'S.useTls', except it runs within 'P.ExceptionP'.
+--
+-- This function discards `ResourceVanished` exceptions that will happen when
+-- trying to close the connection, if the remote end has done it before.
 useTls
   :: (Monad m, P.Proxy p)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
