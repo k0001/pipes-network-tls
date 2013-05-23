@@ -67,7 +67,7 @@ import           System.Timeout                 (timeout)
 -- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
 -- >   putStrLn $ "Secure connection established to " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the socketReadS, nsocketReadS or socketWriteD proxies explained below.
+-- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
 
 --------------------------------------------------------------------------------
 
@@ -89,7 +89,7 @@ import           System.Timeout                 (timeout)
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   putStrLn $ "Secure connection established from " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the socketReadS, nsocketReadS or socketWriteD proxies explained below.
+-- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
 --
 -- If you need to control the way your server runs, then you can use more
 -- advanced functions such as 'listen', 'accept' and 'acceptFork'.
@@ -145,7 +145,7 @@ contextWriteD ctx = P.runIdentityK loop where
 -- These proxies behave like the similarly named ones above, except support for
 -- timing out the interaction with the remote end is added.
 
--- | Like 'socketReadS', except it throws a 'Timeout' exception in the
+-- | Like 'contextReadS', except it throws a 'Timeout' exception in the
 -- 'PE.EitherP' proxy transformer if receiving data from the remote end takes
 -- more time than specified.
 contextReadTimeoutS
@@ -163,7 +163,7 @@ contextReadTimeoutS wait ctx () = loop where
     ex = Timeout $ "contextReadTimeoutS: " <> show wait <> " microseconds."
 {-# INLINABLE contextReadTimeoutS #-}
 
--- | Like 'socketWriteD', except it throws a 'Timeout' exception in the
+-- | Like 'contextWriteD', except it throws a 'Timeout' exception in the
 -- 'PE.EitherP' proxy transformer if sending data to the remote end takes
 -- more time than specified.
 contextWriteTimeoutD
@@ -180,3 +180,4 @@ contextWriteTimeoutD wait ctx = loop where
         Nothing -> PE.throw ex
     ex = Timeout $ "contextWriteTimeoutD: " <> show wait <> " microseconds."
 {-# INLINABLE contextWriteTimeoutD #-}
+
