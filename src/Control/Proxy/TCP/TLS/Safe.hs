@@ -443,7 +443,7 @@ useTls
   -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
 useTls morph k conn@(ctx,_) =
     P.finally morph
-       (T.contextClose ctx)
+       (contextCloseNoVanish ctx)
        (P.bracket_ morph (T.handshake ctx) (byeNoVanish ctx) (k conn))
 
 -- | Like `T.bye`, except it ignores `ResourceVanished` exceptions.
@@ -451,5 +451,11 @@ byeNoVanish :: T.Context -> IO ()
 byeNoVanish ctx =
     E.handle (\Eg.IOError{Eg.ioe_type=Eg.ResourceVanished} -> return ())
              (T.bye ctx)
+
+-- | Like `T.contextClose`, except it ignores `ResourceVanished` exceptions.
+contextCloseNoVanish :: T.Context -> IO ()
+contextCloseNoVanish ctx =
+    E.handle (\Eg.IOError{Eg.ioe_type=Eg.ResourceVanished} -> return ())
+             (T.contextClose ctx)
 
 
