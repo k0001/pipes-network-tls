@@ -57,6 +57,7 @@ import qualified Control.Proxy.Safe              as P
 import           Control.Proxy.TCP.Safe          (listen, Timeout(..))
 import qualified Data.ByteString                 as B
 import           Data.Monoid
+import qualified GHC.IO.Exception                as Eg
 import qualified Network.Socket                  as NS
 import qualified Network.Simple.TCP.TLS          as S
 import qualified Network.TLS                     as T
@@ -442,11 +443,13 @@ useTls
   -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
 useTls morph k conn@(ctx,_) =
     P.finally morph
-       (discardExceptions (T.contextClose ctx))
-       (do P.hoist morph (P.tryIO (T.handshake ctx))
-           P.finally morph (discardExceptions (T.bye ctx)) (k conn))
+       (T.contextClose ctx)
+       (P.bracket_ morph (T.handshake ctx) (byeNoVanish ctx) (k conn))
 
--- | Dangerous thing: perform the given action ignoring all exceptions.
-discardExceptions :: IO () -> IO ()
-discardExceptions = E.handle (\e -> let _ = e :: E.SomeException in return ())
+-- | Like `T.bye`, except it ignores `ResourceVanished` exceptions.
+byeNoVanish :: T.Context -> IO ()
+byeNoVanish ctx =
+    E.handle (\Eg.IOError{Eg.ioe_type=Eg.ResourceVanished} -> return ())
+             (T.bye ctx)
+
 
