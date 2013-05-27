@@ -6,26 +6,26 @@
 -- /within/ a pipes pipeline, then you /must/ use the functions exported from
 -- the module "Control.Proxy.TCP.TLS.Safe" instead.
 --
--- This module re-exports many functions from "Network.Simple.TCP.TLS"
--- module in the @network-simple@ package. You might refer to that
--- module for more documentation.
+-- This module re-exports many functions and types from "Network.Simple.TCP.TLS"
+-- module in the @network-simple@ package. You might refer to that module for
+-- more documentation.
 
 module Control.Proxy.TCP.TLS (
+  -- * Client side
+  -- $client-side
+    S.connect
+  , S.getDefaultClientSettings
+  , S.makeClientSettings
+
   -- * Server side
   -- $server-side
-    S.makeServerSettings
   , S.serve
+  , S.makeServerSettings
   -- ** Listening
   , S.listen
   -- ** Accepting
   , S.accept
   , S.acceptFork
-
-  -- * Client side
-  -- $client-side
-  , S.makeClientSettings
-  , S.getDefaultClientSettings
-  , S.connect
 
   -- * TLS context streams
   -- $socket-streaming
@@ -61,19 +61,18 @@ import           System.Timeout                 (timeout)
 -- Here's how you could run a simple TLS-secured TCP client:
 --
 -- > import Control.Proxy.TCP.TLS
--- > import Network.Simple.TCP.TLS (getDefaultClientSettings)
 -- >
 -- > settings <- getDefaultClientSettings
 -- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
 -- >   putStrLn $ "Secure connection established to " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
+-- >   -- the contextReadS or contextWriteD proxies explained below.
 
 --------------------------------------------------------------------------------
 
 -- $server-side
 --
--- Here's how you could run a simple TLS-secured TCP server that handles in ]
+-- Here's how you could run a simple TLS-secured TCP server that handles in
 -- different threads each incoming connection to port @4433@ at hostname
 -- @example.org@. You will need a X509 certificate and a private key appropiate
 -- to be used at that hostname.
@@ -89,9 +88,9 @@ import           System.Timeout                 (timeout)
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   putStrLn $ "Secure connection established from " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
+-- >   -- the contextReadS or contextWriteD proxies explained below.
 --
--- If you need to control the way your server runs, then you can use more
+-- If you need more control on the way your server runs, then you can use more
 -- advanced functions such as 'listen', 'accept' and 'acceptFork'.
 
 --------------------------------------------------------------------------------
@@ -112,11 +111,11 @@ contextReadS
   :: P.Proxy p
   => T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer p B.ByteString IO ()
-contextReadS ctx () = P.runIdentityP loop where
-    loop = do
+contextReadS ctx = P.runIdentityK loop where
+    loop () = do
       mbs <- lift (S.recv ctx)
       case mbs of
-        Just bs -> P.respond bs >> loop
+        Just bs -> P.respond bs >>= loop
         Nothing -> return ()
 {-# INLINABLE contextReadS #-}
 
@@ -142,8 +141,8 @@ contextWriteD ctx = P.runIdentityK loop where
 
 -- $socket-streaming-timeout
 --
--- These proxies behave like the similarly named ones above, except support for
--- timing out the interaction with the remote end is added.
+-- These proxies behave like the similarly named ones above, except they support
+-- timing out the interaction with the remote end.
 
 -- | Like 'contextReadS', except it throws a 'Timeout' exception in the
 -- 'PE.EitherP' proxy transformer if receiving data from the remote end takes
@@ -153,11 +152,11 @@ contextReadTimeoutS
   => Int                -- ^Timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer (PE.EitherP Timeout p) B.ByteString IO ()
-contextReadTimeoutS wait ctx () = loop where
-    loop = do
+contextReadTimeoutS wait ctx = loop where
+    loop () = do
       mmbs <- lift (timeout wait (S.recv ctx))
       case mmbs of
-        Just (Just bs) -> P.respond bs >> loop
+        Just (Just bs) -> P.respond bs >>= loop
         Just Nothing   -> return ()
         Nothing        -> PE.throw ex
     ex = Timeout $ "contextReadTimeoutS: " <> show wait <> " microseconds."

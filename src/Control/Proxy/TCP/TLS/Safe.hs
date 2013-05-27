@@ -6,14 +6,20 @@
 -- itself by relying on the facilities provided by 'P.ExceptionP' from the
 -- @pipes-safe@ library.
 --
--- Instead, if just want to use resources already acquired or released outside
--- the pipeline, then you could use the simpler and similar functions exported
--- by "Control.Proxy.TCP.TLS".
+-- If you don't need to establish new TLS connections within your pipeline,
+-- then consider using the simpler and similar functions exported by
+-- "Control.Proxy.TCP.TLS".
+--
+-- This module re-exports many functions and types from "Network.Simple.TCP.TLS"
+-- module in the @network-simple@ package. You might refer to that module for
+-- more documentation.
 
 module Control.Proxy.TCP.TLS.Safe (
   -- * Client side
   -- $client-side
     connect
+  , S.getDefaultClientSettings
+  , S.makeClientSettings
   -- ** Streaming
   -- $client-streaming
   , connectReadS
@@ -22,6 +28,7 @@ module Control.Proxy.TCP.TLS.Safe (
   -- * Server side
   -- $server-side
   , serve
+  , S.makeServerSettings
   -- ** Listening
   , listen
   -- ** Accepting
@@ -41,10 +48,7 @@ module Control.Proxy.TCP.TLS.Safe (
   , S.HostPreference(..)
   , S.Credential(..)
   , S.ServerSettings
-  , S.makeServerSettings
   , S.ClientSettings
-  , S.makeClientSettings
-  , S.getDefaultClientSettings
   , Timeout(..)
   ) where
 
@@ -75,7 +79,7 @@ import           System.Timeout                  (timeout)
 -- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
 -- >   tryIO . putStrLn $ "Secure connection established to " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
+-- >   -- the contextReadS or contextWriteD proxies explained below.
 --
 -- You might prefer to use the simpler but less general solutions offered by
 -- 'connectReadS' and 'connectWriteD', so check those too.
@@ -84,10 +88,12 @@ import           System.Timeout                  (timeout)
 
 -- | Connect to a TLS-secured TCP server and use the connection.
 --
--- The connection is closed when done or in case of exceptions.
+-- A TLS handshake is performed immediately after establishing the TCP
+-- connection.
 --
--- If you prefer to open and close the connection yourself, then use
--- 'S.connectTls' instead.
+-- The connection is properly closed when done or in case of exceptions. If you
+-- need to manage the lifetime of the connection resources yourself, then use
+-- 'connectTls' instead.
 connect
   :: (P.Proxy p, Monad m)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
@@ -99,9 +105,10 @@ connect
                           -- once a TLS-secured connection is established. Takes
                           -- the TLS connection context and remote end address.
   -> P.ExceptionP p a' a b' b m r
-connect morph cs h p k = do
-    conn <- P.hoist morph . P.tryIO $ S.connectTls cs h p
-    useTls morph k conn
+connect morph cs host port  k = do
+    P.bracket morph (S.connectTls cs host port)
+                    (contextCloseNoVanish . fst)
+                    (useTls morph k)
 
 --------------------------------------------------------------------------------
 
@@ -123,7 +130,7 @@ connect morph cs h p k = do
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
--- If the remote peer closes its side of the connection of EOF is reached,  this
+-- If the remote peer closes its side of the connection of EOF is reached, this
 -- proxy returns.
 --
 -- The connection is closed when done or in case of exceptions.
@@ -134,7 +141,7 @@ connect morph cs h p k = do
 --
 -- >>> settings <- getDefaultClientSettings
 -- >>> let src = connectReadS Nothing settings "www.example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ src >-> tryK printD
+-- >>> runSafeIO . runProxy . runEitherK $ src >-> try . printD
 connectReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
@@ -142,7 +149,7 @@ connectReadS
   -> NS.HostName
   -> NS.ServiceName     -- ^Server service port.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-connectReadS mwait cs host port () = do
+connectReadS mwait cs host port = \() -> do
    connect id cs host port $ \(ctx,_) -> do
      contextReadS mwait ctx ()
 
@@ -155,9 +162,7 @@ connectReadS mwait cs host port () = do
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
--- If the remote peer closes its side of the connection, this proxy returns.
---
--- The connection is closed when done or in case of exceptions.
+-- The connection is properly closed when done or in case of exceptions.
 --
 -- Using this proxy you can write code like the following, which sends data to a
 -- TLS-secured TCP server listening at hostname "example.org" on port 4433:
@@ -173,7 +178,7 @@ connectWriteD
   -> NS.HostName        -- ^Server host name.
   -> NS.ServiceName     -- ^Server service port.
   -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
-connectWriteD mwait cs hp port x = do
+connectWriteD mwait cs hp port = \x -> do
    connect id cs hp port $ \(ctx,_) ->
      contextWriteD mwait ctx x
 
@@ -197,7 +202,7 @@ connectWriteD mwait cs hp port x = do
 -- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
 -- >   tryIO . putStrLn $ "Secure connection established from " ++ show remoteAddr
 -- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS, ncontextReadS or contextWriteD proxies explained below.
+-- >   -- the contextReadS or contextWriteD proxies explained below.
 --
 -- You might prefer to use the simpler but less general solutions offered by
 -- 'serveReadS' and 'serveWriteD', or if you need to control the way your
@@ -208,6 +213,9 @@ connectWriteD mwait cs hp port x = do
 
 -- | Start a TLS-secured TCP server that accepts incoming connections and
 -- handles each of them concurrently, in different threads.
+--
+-- A TLS handshake is performed immediately after establishing each TCP
+-- connection.
 --
 -- Any acquired network resources are properly closed and discarded when done or
 -- in case of exceptions.
@@ -235,7 +243,10 @@ serve morph ss hp port k = do
 
 -- | Accept a single incoming TLS-secured TCP connection and use it.
 --
--- The connection is closed when done or in case of exceptions.
+-- A TLS handshake is performed immediately after establishing each TCP
+-- connection.
+--
+-- The connection properly closed when done or in case of exceptions.
 accept
   :: (P.Proxy p, Monad m)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
@@ -248,14 +259,13 @@ accept
                           -- remote end address.
   -> P.ExceptionP p a' a b' b m r
 accept morph ss lsock k = do
-    conn <- P.hoist morph . P.tryIO $ S.acceptTls ss lsock
-    useTls morph k conn
+    P.bracket morph (S.acceptTls ss lsock)
+                    (contextCloseNoVanish . fst)
+                    (useTls morph k)
 {-# INLINABLE accept #-}
 
--- | Accept a single incoming TLS-secured TCP connection and use it in a
--- different thread.
---
--- The connection is closed when done or in case of exceptions.
+-- | Like 'accept', except it uses a different thread to performs the TLS
+-- handshake and run the given computation.
 acceptFork
   :: (P.Proxy p, Monad m)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
@@ -290,8 +300,6 @@ acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
--- Less than the specified maximum number of bytes might be received at once.
---
 -- If the remote peer closes its side of the connection of EOF is reached,  this
 -- proxy returns.
 --
@@ -307,7 +315,7 @@ acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
 -- >>> let settings = makeServerSettings cert pkey Nothing
 -- >>> let src = serveReadS Nothing settings (Host "example.org") "4433"
--- >>> runSafeIO . runProxy . runEitherK $ src >-> tryK printD
+-- >>> runSafeIO . runProxy . runEitherK $ src >-> try . printD
 serveReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
@@ -315,7 +323,7 @@ serveReadS
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-serveReadS mwait ss hp port () = do
+serveReadS mwait ss hp port = \() -> do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
        contextReadS mwait csock ()
@@ -344,7 +352,7 @@ serveReadS mwait ss hp port () = do
 -- >>> cert <- fileReadCertificate "~/example.org.crt"
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
 -- >>> let settings = makeServerSettings cert pkey Nothing
--- >>> let dst = serveWriteD Nothing settings (Host "example.org") "4433"
+-- >>> let dst = serveWriteD Nothing settings "example.org" "4433"
 -- >>> runSafeIO . runProxy . runEitherK $ fromListS ["He","llo\r\n"] >-> dst
 serveWriteD
   :: P.Proxy p
@@ -353,7 +361,7 @@ serveWriteD
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
   -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
-serveWriteD mwait ss hp port x = do
+serveWriteD mwait ss hp port = \x -> do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
        contextWriteD mwait csock x
@@ -373,27 +381,26 @@ serveWriteD mwait ss hp port x = do
 -- more time that such timeout, then throw a 'Timeout' exception in the
 -- 'P.ExceptionP' proxy transformer.
 --
--- Less than the specified maximum number of bytes might be received at once.
---
--- If the remote peer closes its side of the connection, this proxy returns.
+-- If the remote peer closes its side of the connection or EOF is reached, this
+-- proxy returns.
 contextReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
   -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
-contextReadS Nothing ctx () = loop where
-    loop = do
+contextReadS Nothing ctx = loop where
+    loop () = do
       mbs <- P.tryIO (S.recv ctx)
       case mbs of
         Nothing -> return ()
-        Just bs -> P.respond bs >> loop
-contextReadS (Just wait) ctx () = loop where
-    loop = do
+        Just bs -> P.respond bs >>= loop
+contextReadS (Just wait) ctx = loop where
+    loop () = do
       mmbs <- P.tryIO (timeout wait (S.recv ctx))
       case mmbs of
         Nothing        -> P.throw ex
         Just Nothing   -> return ()
-        Just (Just bs) -> P.respond bs >> loop
+        Just (Just bs) -> P.respond bs >>= loop
     ex = Timeout $ "contextReadS: " <> show wait <> " microseconds."
 {-# INLINABLE contextReadS #-}
 
@@ -437,28 +444,30 @@ contextWriteD (Just wait) ctx = loop where
 -- given action, and at last say 'T.bye' and close the TLS connection, even in
 -- case of exceptions. Like 'S.useTls', except it runs within 'P.ExceptionP'.
 --
--- This function discards `ResourceVanished` exceptions that will happen when
--- trying to close the connection, if the remote end has done it before.
+-- This function discards 'Eg.ResourceVanished' exceptions that will happen when
+-- trying to say 'T.bye' if the remote end has done it before.
 useTls
   :: (Monad m, P.Proxy p)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
   -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
   -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
-useTls morph k conn@(ctx,_) =
-    P.finally morph
-       (contextCloseNoVanish ctx)
-       (P.bracket_ morph (T.handshake ctx) (byeNoVanish ctx) (k conn))
+useTls morph k = \conn@(ctx,_) -> do
+    P.bracket_ morph (T.handshake ctx) (byeNoVanish ctx) (k conn)
+{-# INLINABLE useTls #-}
+
 
 -- | Like `T.bye`, except it ignores `ResourceVanished` exceptions.
 byeNoVanish :: T.Context -> IO ()
 byeNoVanish ctx =
     E.handle (\Eg.IOError{Eg.ioe_type=Eg.ResourceVanished} -> return ())
              (T.bye ctx)
+{-# INLINABLE byeNoVanish #-}
 
 -- | Like `T.contextClose`, except it ignores `ResourceVanished` exceptions.
 contextCloseNoVanish :: T.Context -> IO ()
-contextCloseNoVanish ctx =
+contextCloseNoVanish = \ctx ->
     E.handle (\Eg.IOError{Eg.ioe_type=Eg.ResourceVanished} -> return ())
              (T.contextClose ctx)
+{-# INLINABLE contextCloseNoVanish #-}
 
 
