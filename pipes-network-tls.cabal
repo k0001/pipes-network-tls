@@ -68,13 +68,15 @@ executable pipes-network-tls-example-echo
                      , bytestring
                      , network-simple-tls
                      , network
-                     , tls-extra == 0.6.1
+                     , tls-extra
                      , tls
                      , certificate
                      , network-simple-tls
                      , pipes
                      , pipes-network-tls
                      , async
+  ghc-prof-options: -prof -fprof-auto
+  ghc-options: -O2 -threaded
 
 
 executable pipes-network-tls-example-tunnel
@@ -93,4 +95,5 @@ executable pipes-network-tls-example-tunnel
                      , pipes
                      , pipes-network-tls
                      , async
-
+  ghc-prof-options: -prof -fprof-auto
+  ghc-options: -O2 -threaded
