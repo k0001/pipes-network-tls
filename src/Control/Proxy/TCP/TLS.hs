@@ -14,12 +14,14 @@ module Control.Proxy.TCP.TLS (
   -- * Client side
   -- $client-side
     S.connect
+  , S.ClientSettings
   , S.getDefaultClientSettings
   , S.makeClientSettings
 
   -- * Server side
   -- $server-side
   , S.serve
+  , S.ServerSettings
   , S.makeServerSettings
   -- ** Listening
   , S.listen
@@ -39,8 +41,6 @@ module Control.Proxy.TCP.TLS (
   -- * Exports
   , S.HostPreference(..)
   , S.Credential(..)
-  , S.ClientSettings
-  , S.ServerSettings
   , Timeout(..)
   ) where
 
@@ -122,10 +122,9 @@ contextReadS ctx = P.runIdentityK loop where
 -- | Encrypts and sends to the remote end the bytes received from upstream,
 -- then forwards such same bytes downstream.
 --
--- Requests from downstream are forwarded upstream.
+-- If the remote peer closes its side of the connection, this proxy returns.
 --
--- If the remote peer closes its side of the connection or EOF is reached,
--- this proxy returns.
+-- Requests from downstream are forwarded upstream.
 contextWriteD
   :: P.Proxy p
   => T.Context          -- ^Established TLS connection context.

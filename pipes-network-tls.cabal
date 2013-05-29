@@ -11,22 +11,20 @@ homepage:           https://github.com/k0001/pipes-network-tls
 bug-reports:        https://github.com/k0001/pipes-network-tls/issues
 category:           Pipes, Network
 build-type:         Simple
-synopsis:           Use TLS-secured network sockets together with the pipes library.
+synopsis:           TLS-secured network connections support for pipes.
 cabal-version:      >=1.8
 extra-source-files: README.md PEOPLE
 description:
-  Use TLS-secured network sockets together with the @pipes@ library.
+  Use TLS-secured network connections together with the @pipes@ ecosystem.
   .
   This package is organized using the following namespaces:
   .
-  * "Control.Proxy.TCP.TLS" exports @pipes@ proxies and functions to
-  deal with TLS-secured TCP connections. Such proxies don't acquire nor
-  release new resources within a proxy pipeline.
+  * "Control.Proxy.TCP.TLS" exports 'Control.Proxy.Proxy's and functions for
+  establishing and using TLS-secured TCP connections.
   .
-  * "Control.Proxy.TCP.TLS.Safe" exports @pipes-safe@ proxies and
-  functions to deal with TLS-secured TCP connections. Such proxies may
-  safely acquire and release resources within a pipeline, using the
-  facilities provided by the @pipes-safe@ package.
+  * "Control.Proxy.TCP.TLS.Safe" is similar to "Control.Proxy.TCP.TLS", except
+  the exported 'Control.Proxy.Proxy's themselves can obtain new TLS resources
+  safely by using the facilities providied by the @pipes-safe@ package.
 
 source-repository head
     type: git

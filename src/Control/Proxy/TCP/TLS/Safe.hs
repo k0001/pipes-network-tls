@@ -18,6 +18,7 @@ module Control.Proxy.TCP.TLS.Safe (
   -- * Client side
   -- $client-side
     connect
+  , S.ClientSettings
   , S.getDefaultClientSettings
   , S.makeClientSettings
   -- ** Streaming
@@ -28,6 +29,7 @@ module Control.Proxy.TCP.TLS.Safe (
   -- * Server side
   -- $server-side
   , serve
+  , S.ServerSettings
   , S.makeServerSettings
   -- ** Listening
   , listen
@@ -47,8 +49,6 @@ module Control.Proxy.TCP.TLS.Safe (
   -- * Exports
   , S.HostPreference(..)
   , S.Credential(..)
-  , S.ServerSettings
-  , S.ClientSettings
   , Timeout(..)
   ) where
 
@@ -375,7 +375,10 @@ serveWriteD mwait ss hp port = \x -> do
 
 --------------------------------------------------------------------------------
 
--- | Receives bytes from the remote end and sends them downstream.
+-- | Receives decrypted bytes from the remote end, sending them downstream.
+--
+-- Up to @16384@ decrypted bytes will be received at once. The TLS connection is
+-- automatically renegotiated if a /ClientHello/ message is received.
 --
 -- If an optional timeout is given and receiveing data from the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
@@ -404,8 +407,8 @@ contextReadS (Just wait) ctx = loop where
     ex = Timeout $ "contextReadS: " <> show wait <> " microseconds."
 {-# INLINABLE contextReadS #-}
 
--- | Sends to the remote end the bytes received from upstream, then forwards
--- such same bytes downstream.
+-- | Encrypts and sends to the remote end the bytes received from upstream,
+-- then forwards such same bytes downstream.
 --
 -- If an optional timeout is given and sending data to the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
