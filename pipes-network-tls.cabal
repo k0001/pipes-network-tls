@@ -13,7 +13,11 @@ category:           Pipes, Network
 build-type:         Simple
 synopsis:           TLS-secured network connections support for pipes.
 cabal-version:      >=1.8
-extra-source-files: README.md PEOPLE
+extra-source-files:
+  README.md
+  PEOPLE
+  examples/tls-echo.hs
+  examples/tls-tunnel.hs
 description:
   Use TLS-secured network connections together with the @pipes@ ecosystem.
   .
