@@ -1,7 +1,9 @@
 # pipes-network-tls
 
-Utilities to deal with TLS-secured sockets using the **pipes** and
-**pipes-safe** libraries. Currently, only TCP sockets are supported.
+Utilities to deal with TLS-secured network connections using the
+**pipes** and **pipes-safe** libraries.
+
+Currently, only TCP sockets are supported.
 
 Check the source or rendered Haddocks for extensive documentation.
 
