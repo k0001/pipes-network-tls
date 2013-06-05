@@ -3,7 +3,7 @@
 -- | This module exports functions that allow you to use TLS-secured
 -- TCP connections as 'P.Proxy' streams, as well as utilities to connect to a
 -- TLS-enabled TCP server or running your own, possibly within the pipeline
--- itself by relying on the facilities provided by 'P.ExceptionP' from the
+-- itself by relying on the facilities provided by 'P.SafeP' from the
 -- @pipes-safe@ library.
 --
 -- If you don't need to establish new TLS connections within your pipeline,
@@ -100,11 +100,11 @@ connect
   -> S.ClientSettings              -- ^TLS settings.
   -> NS.HostName                   -- ^Server hostname.
   -> NS.ServiceName                -- ^Server service port.
-  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
+  -> ((T.Context, NS.SockAddr) -> P.SafeP p a' a b' b m r)
                           -- ^Computation to run in a different thread
                           -- once a TLS-secured connection is established. Takes
                           -- the TLS connection context and remote end address.
-  -> P.ExceptionP p a' a b' b m r
+  -> P.SafeP p a' a b' b m r
 connect morph cs host port  k = do
     P.bracket morph (S.connectTls cs host port)
                     (contextCloseNoVanish . fst)
@@ -128,7 +128,7 @@ connect morph cs host port  k = do
 --
 -- If an optional timeout is given and receiveing data from the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
--- 'P.ExceptionP' proxy transformer.
+-- 'P.SafeP' proxy transformer.
 --
 -- If the remote peer closes its side of the connection of EOF is reached, this
 -- proxy returns.
@@ -141,14 +141,14 @@ connect morph cs host port  k = do
 --
 -- >>> settings <- getDefaultClientSettings
 -- >>> let src = connectReadS Nothing settings "www.example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ src >-> try . printD
+-- >>> runSafeIO . runProxy . runEitherK . runSafeK id $ src >-> try . printD
 connectReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ClientSettings   -- ^TLS settings.
   -> NS.HostName
   -> NS.ServiceName     -- ^Server service port.
-  -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
+  -> () -> P.Producer (P.SafeP p) B.ByteString P.SafeIO ()
 connectReadS mwait cs host port = \() -> do
    connect id cs host port $ \(ctx,_) -> do
      contextReadS mwait ctx ()
@@ -160,7 +160,7 @@ connectReadS mwait cs host port = \() -> do
 --
 -- If an optional timeout is given and sending data to the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
--- 'P.ExceptionP' proxy transformer.
+-- 'P.SafeP' proxy transformer.
 --
 -- The connection is properly closed when done or in case of exceptions.
 --
@@ -170,14 +170,14 @@ connectReadS mwait cs host port = \() -> do
 -- >>> :set -XOverloadedStrings
 -- >>> settings <- getDefaultClientSettings
 -- >>> let dst = connectWriteS Nothing settings "www.example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ fromListS ["He","llo\r\n"] >-> dst
+-- >>> runSafeIO . runProxy . runEitherK . runSafeK id $ fromListS ["He","llo\r\n"] >-> dst
 connectWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ClientSettings   -- ^TLS settings.
   -> NS.HostName        -- ^Server host name.
   -> NS.ServiceName     -- ^Server service port.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
+  -> x -> (P.SafeP p) x B.ByteString x B.ByteString P.SafeIO r
 connectWriteD mwait cs hp port = \x -> do
    connect id cs hp port $ \(ctx,_) ->
      contextWriteD mwait ctx x
@@ -234,7 +234,7 @@ serve
                           -- once an incomming connection is accepted and a
                           -- TLS-secured communication is established. Takes the
                           -- TLS connection context and remote end address.
-  -> P.ExceptionP p a' a b' b m r
+  -> P.SafeP p a' a b' b m r
 serve morph ss hp port k = do
    listen morph hp port $ \(lsock,_) -> do
      forever $ acceptFork morph ss lsock k
@@ -252,12 +252,12 @@ accept
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
   -> S.ServerSettings              -- ^TLS settings.
   -> NS.Socket                     -- ^Listening and bound socket.
-  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
+  -> ((T.Context, NS.SockAddr) -> P.SafeP p a' a b' b m r)
                           -- ^Computation to run once an incomming connection is
                           -- accepted and a TLS-secured communication is
                           -- established. Takes the TLS connection context and
                           -- remote end address.
-  -> P.ExceptionP p a' a b' b m r
+  -> P.SafeP p a' a b' b m r
 accept morph ss lsock k = do
     P.bracket morph (S.acceptTls ss lsock)
                     (contextCloseNoVanish . fst)
@@ -276,7 +276,7 @@ acceptFork
                           -- once an incomming connection is accepted and a
                           -- TLS-secured communication is established. Takes the
                           -- TLS connection context and remote end address.
-  -> P.ExceptionP p a' a b' b m ThreadId
+  -> P.SafeP p a' a b' b m ThreadId
 acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 {-# INLINABLE acceptFork #-}
 
@@ -298,7 +298,7 @@ acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 --
 -- If an optional timeout is given and receiveing data from the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
--- 'P.ExceptionP' proxy transformer.
+-- 'P.SafeP' proxy transformer.
 --
 -- If the remote peer closes its side of the connection of EOF is reached,  this
 -- proxy returns.
@@ -315,14 +315,14 @@ acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
 -- >>> let settings = makeServerSettings cert pkey Nothing
 -- >>> let src = serveReadS Nothing settings (Host "example.org") "4433"
--- >>> runSafeIO . runProxy . runEitherK $ src >-> try . printD
+-- >>> runSafeIO . runProxy . runEitherK . runSafeK id $ src >-> try . printD
 serveReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
-  -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
+  -> () -> P.Producer (P.SafeP p) B.ByteString P.SafeIO ()
 serveReadS mwait ss hp port = \() -> do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
@@ -336,7 +336,7 @@ serveReadS mwait ss hp port = \() -> do
 --
 -- If an optional timeout is given and sending data to the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
--- 'P.ExceptionP' proxy transformer.
+-- 'P.SafeP' proxy transformer.
 --
 -- If the remote peer closes its side of the connection, this proxy returns.
 --
@@ -353,14 +353,14 @@ serveReadS mwait ss hp port = \() -> do
 -- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
 -- >>> let settings = makeServerSettings cert pkey Nothing
 -- >>> let dst = serveWriteD Nothing settings "example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ fromListS ["He","llo\r\n"] >-> dst
+-- >>> runSafeIO . runProxy . runEitherK . runSafeK id $ fromListS ["He","llo\r\n"] >-> dst
 serveWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
+  -> x -> (P.SafeP p) x B.ByteString x B.ByteString P.SafeIO r
 serveWriteD mwait ss hp port = \x -> do
    listen id hp port $ \(lsock,_) -> do
      accept id ss lsock $ \(csock,_) -> do
@@ -382,7 +382,7 @@ serveWriteD mwait ss hp port = \x -> do
 --
 -- If an optional timeout is given and receiveing data from the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
--- 'P.ExceptionP' proxy transformer.
+-- 'P.SafeP' proxy transformer.
 --
 -- If the remote peer closes its side of the connection or EOF is reached, this
 -- proxy returns.
@@ -390,7 +390,7 @@ contextReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
+  -> () -> P.Producer (P.SafeP p) B.ByteString P.SafeIO ()
 contextReadS Nothing ctx = loop where
     loop () = do
       mbs <- P.tryIO (S.recv ctx)
@@ -412,7 +412,7 @@ contextReadS (Just wait) ctx = loop where
 --
 -- If an optional timeout is given and sending data to the remote end takes
 -- more time that such timeout, then throw a 'Timeout' exception in the
--- 'P.ExceptionP' proxy transformer.
+-- 'P.SafeP' proxy transformer.
 --
 -- If the remote peer closes its side of the connection, this proxy returns.
 --
@@ -421,7 +421,7 @@ contextWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
+  -> x -> (P.SafeP p) x B.ByteString x B.ByteString P.SafeIO r
 contextWriteD Nothing ctx = loop where
     loop x = do
       a <- P.request x
@@ -445,15 +445,15 @@ contextWriteD (Just wait) ctx = loop where
 
 -- | Perform a TLS 'T.handshake' on the given 'T.Context', then perform the
 -- given action, and at last say 'T.bye' and close the TLS connection, even in
--- case of exceptions. Like 'S.useTls', except it runs within 'P.ExceptionP'.
+-- case of exceptions. Like 'S.useTls', except it runs within 'P.SafeP'.
 --
 -- This function discards 'Eg.ResourceVanished' exceptions that will happen when
 -- trying to say 'T.bye' if the remote end has done it before.
 useTls
   :: (Monad m, P.Proxy p)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
-  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
-  -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
+  -> ((T.Context, NS.SockAddr) -> P.SafeP p a' a b' b m r)
+  -> (T.Context, NS.SockAddr) -> P.SafeP p a' a b' b m r
 useTls morph k = \conn@(ctx,_) -> do
     P.bracket_ morph (T.handshake ctx) (byeNoVanish ctx) (k conn)
 {-# INLINABLE useTls #-}
