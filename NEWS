@@ -1,3 +1,8 @@
+# Version HEAD
+
+* Re-export `Network.Socket.withSocketsDo`
+
+
 # Version 0.1.0.0
 
 * First release.
