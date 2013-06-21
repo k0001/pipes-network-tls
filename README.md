@@ -1,7 +1,7 @@
 # pipes-network-tls
 
 Utilities to deal with TLS-secured network connections using the
-**pipes** and **pipes-safe** libraries.
+**pipes**, **pipes-safe** and **tls** libraries.
 
 Currently, only TCP sockets are supported.
 
