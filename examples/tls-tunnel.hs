@@ -44,7 +44,7 @@ runTlsTunnel sS sHp sPort cS cHost cPort = do
 
 
 main :: IO ()
-main = do
+main = Pt.withSocketsDo $ do
     args <- getArgs
     case getOpt RequireOrder options args of
       (actions, [locHost,locPort,remHost,remPort], _) -> do

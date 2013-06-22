@@ -29,7 +29,7 @@ server cred hp port mcs = do
        putStrLn $ show caddr <> " quit."
 
 main :: IO ()
-main = do
+main = Z.withSocketsDo $ do
     args <- getArgs
     case getOpt RequireOrder options args of
       (actions, [hostname,port], _) -> do
