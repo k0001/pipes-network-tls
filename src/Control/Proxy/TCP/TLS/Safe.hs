@@ -167,14 +167,6 @@ connect morph cs host port  k = do
 -- proxy returns.
 --
 -- The connection is closed when done or in case of exceptions.
---
--- Using this proxy you can write code like the following, which prints whatever
--- is received through a TLS-secured TCP connection to a given server listening
--- at hostname "example.org" on port 4433:
---
--- >>> settings <- getDefaultClientSettings
--- >>> let src = connectReadS Nothing settings "www.example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ src >-> try . printD
 connectReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
@@ -196,14 +188,6 @@ connectReadS mwait cs host port = \() -> do
 -- 'P.ExceptionP' proxy transformer.
 --
 -- The connection is properly closed when done or in case of exceptions.
---
--- Using this proxy you can write code like the following, which sends data to a
--- TLS-secured TCP server listening at hostname "example.org" on port 4433:
---
--- >>> :set -XOverloadedStrings
--- >>> settings <- getDefaultClientSettings
--- >>> let dst = connectWriteS Nothing settings "www.example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ fromListS ["He","llo\r\n"] >-> dst
 connectWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
@@ -340,17 +324,6 @@ acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 --
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
---
--- Using this proxy you can write code like the following, which prints data
--- received from a TLS-secured TCP connection to the hostname "example.org" at
--- port 4433:
---
--- >>> import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
--- >>> cert <- fileReadCertificate "~/example.org.crt"
--- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
--- >>> let settings = makeServerSettings cert pkey Nothing
--- >>> let src = serveReadS Nothing settings (Host "example.org") "4433"
--- >>> runSafeIO . runProxy . runEitherK $ src >-> try . printD
 serveReadS
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
@@ -377,18 +350,6 @@ serveReadS mwait ss hp port = \() -> do
 --
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
---
--- Using this proxy you can write straightforward code like the following, which
--- sends data to an incoming TLS-secured TCP connection to the hostname
--- "example.org" at port 4433:
---
--- >>> :set -XOverloadedStrings
--- >>> import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
--- >>> cert <- fileReadCertificate "~/example.org.crt"
--- >>> pkey <- fileReadPrivateKey  "~/example.org.key"
--- >>> let settings = makeServerSettings cert pkey Nothing
--- >>> let dst = serveWriteD Nothing settings "example.org" "4433"
--- >>> runSafeIO . runProxy . runEitherK $ fromListS ["He","llo\r\n"] >-> dst
 serveWriteD
   :: P.Proxy p
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
