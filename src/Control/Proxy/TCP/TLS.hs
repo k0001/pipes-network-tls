@@ -91,13 +91,15 @@ import           System.Timeout                 (timeout)
 --
 -- Here's how you could run a simple TLS-secured TCP client:
 --
--- > import Control.Proxy.TCP.TLS
--- >
--- > settings <- getDefaultClientSettings
--- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
--- >   putStrLn $ "Secure connection established to " ++ show remoteAddr
--- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS or contextWriteD proxies explained below.
+-- @
+-- import "Control.Proxy.TCP.TLS"
+--
+-- \ settings <- 'S.getDefaultClientSettings'
+-- 'S.connect' settings \"www.example.org\" \"443\" $ \(tlsCtx, remoteAddr) -> do
+--   putStrLn $ \"Secure connection established to \" ++ show remoteAddr
+--   -- now you may use tlsCtx as you please within this scope, possibly with
+--   -- the 'contextReadS' or 'contextWriteD' proxies explained below.
+-- @
 
 --------------------------------------------------------------------------------
 
@@ -108,21 +110,23 @@ import           System.Timeout                 (timeout)
 -- @example.org@. You will need a X509 certificate and a private key appropiate
 -- to be used at that hostname.
 --
--- > import Control.Proxy.TCP.TLS
--- > import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
--- >
--- > cert <- fileReadCertificate "~/example.org.crt"
--- > pkey <- fileReadPrivateKey  "~/example.org.key"
--- > let cred = Credential cert pkey []
--- >     settings = makeServerSettings cred Nothing
--- >
--- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
--- >   putStrLn $ "Secure connection established from " ++ show remoteAddr
--- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS or contextWriteD proxies explained below.
+-- @
+-- import "Control.Proxy.TCP.TLS"
+-- import "Network.TLS.Extra" (fileReadCertificate, fileReadPrivateKey)
+--
+-- \ cert <- 'Network.TLS.Extra.fileReadCertificate' \"~/example.org.crt\"
+-- pkey <- 'Network.TLS.Extra.fileReadPrivateKey'  \"~/example.org.key\"
+-- let cred = 'S.Credential' cert pkey []
+--     settings = 'S.makeServerSettings' cred Nothing
+--
+-- \ 'S.serve' settings ('S.Host' \"example.org\") \"4433\" $ \(tlsCtx, remoteAddr) -> do
+--   putStrLn $ \"Secure connection established from \" ++ show remoteAddr
+--   -- now you may use tlsCtx as you please within this scope, possibly with
+--   -- the 'contextReadS' or 'contextWriteD' proxies explained below.
+-- @
 --
 -- If you need more control on the way your server runs, then you can use more
--- advanced functions such as 'listen', 'accept' and 'acceptFork'.
+-- advanced functions such as 'S.listen', 'S.accept' and 'S.acceptFork'.
 
 --------------------------------------------------------------------------------
 

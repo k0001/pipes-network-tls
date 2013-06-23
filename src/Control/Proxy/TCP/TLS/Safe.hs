@@ -104,13 +104,15 @@ import           System.Timeout                  (timeout)
 --
 -- Here's how you could run a simple TLS-secured TCP client:
 --
--- > import Control.Proxy.TCP.TLS.Safe
--- >
--- > settings <- getDefaultClientSettings
--- > connect settings "www.example.org" "443" $ \(tlsCtx, remoteAddr) -> do
--- >   tryIO . putStrLn $ "Secure connection established to " ++ show remoteAddr
--- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS or contextWriteD proxies explained below.
+-- @
+-- import "Control.Proxy.TCP.TLS.Safe"
+--
+-- \ settings <- 'S.getDefaultClientSettings'
+-- 'connect' settings \"www.example.org\" \"443\" $ \(tlsCtx, remoteAddr) -> do
+--   tryIO . putStrLn $ \"Secure connection established to \" ++ show remoteAddr
+--   -- now you may use tlsCtx as you please within this scope, possibly with
+--   -- the 'contextReadS' or 'contextWriteD' proxies explained below.
+-- @
 --
 -- You might prefer to use the simpler but less general solutions offered by
 -- 'connectReadS' and 'connectWriteD', so check those too.
@@ -124,7 +126,7 @@ import           System.Timeout                  (timeout)
 --
 -- The connection is properly closed when done or in case of exceptions. If you
 -- need to manage the lifetime of the connection resources yourself, then use
--- 'connectTls' instead.
+-- 'S.connectTls' instead.
 connect
   :: (P.Proxy p, Monad m)
   => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
@@ -222,18 +224,20 @@ connectWriteD mwait cs hp port = \x -> do
 -- @example.org@. You will need a X509 certificate and a private key appropiate
 -- to be used at that hostname.
 --
--- > import Control.Proxy.TCP.TLS.Safe
--- > import Network.TLS.Extra (fileReadCertificate, fileReadPrivateKey)
--- >
--- > cert <- fileReadCertificate "~/example.org.crt"
--- > pkey <- fileReadPrivateKey  "~/example.org.key"
--- > let cred = Credential cert pkey []
--- >     settings = makeServerSettings cred Nothing
--- >
--- > serve settings (Host "example.org") "4433" $ \(tlsCtx, remoteAddr) -> do
--- >   tryIO . putStrLn $ "Secure connection established from " ++ show remoteAddr
--- >   -- now you may use tlsCtx as you please within this scope, possibly with
--- >   -- the contextReadS or contextWriteD proxies explained below.
+-- @
+-- import "Control.Proxy.TCP.TLS.Safe"
+-- import "Network.TLS.Extra" (fileReadCertificate, fileReadPrivateKey)
+--
+-- \ cert <- 'Network.TLS.Extra.fileReadCertificate' \"~/example.org.crt\"
+-- pkey <- 'Network.TLS.Extra.fileReadPrivateKey'  \"~/example.org.key\"
+-- let cred = 'S.Credential' cert pkey []
+--     settings = 'S.makeServerSettings' cred Nothing
+--
+-- \ 'serve' settings ('S.Host' \"example.org\") \"4433\" $ \(tlsCtx, remoteAddr) -> do
+--   tryIO . putStrLn $ \"Secure connection established from \" ++ show remoteAddr
+--   -- now you may use tlsCtx as you please within this scope, possibly with
+--   -- the 'contextReadS' or 'contextWriteD' proxies explained below.
+-- @
 --
 -- You might prefer to use the simpler but less general solutions offered by
 -- 'serveReadS' and 'serveWriteD', or if you need to control the way your
