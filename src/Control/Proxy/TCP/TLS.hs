@@ -40,7 +40,7 @@ module Control.Proxy.TCP.TLS (
 
   -- * Note to Windows users
   -- $windows-users
-  , NS.withSocketsDo
+  , S.withSocketsDo
 
   -- * Exports
   , S.HostPreference(..)
@@ -62,7 +62,7 @@ import           System.Timeout                 (timeout)
 
 -- $windows-users
 --
--- If you are running Windows, then you /must/ call 'NS.withSocketsDo', just
+-- If you are running Windows, then you /must/ call 'S.withSocketsDo', just
 -- once, right at the beginning of your program. That is, change your program's
 -- 'main' function from:
 --
@@ -75,7 +75,7 @@ import           System.Timeout                 (timeout)
 -- To:
 --
 -- @
--- main = 'NS.withSocketsDo' $ do
+-- main = 'S.withSocketsDo' $ do
 --   print \"Hello world\"
 --   -- rest of the program...
 -- @
