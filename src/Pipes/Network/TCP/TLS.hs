@@ -1,16 +1,18 @@
+{-# LANGUAGE RankNTypes #-}
+
 -- | This module exports functions that allow you to use TLS-secured
 -- TCP connections as streams, as well as utilities to connect to a
 -- TLS-enabled TCP server or running your own.
 --
 -- If you need to safely connect to a TLS-enabled TCP server or run your own
 -- /within/ a pipes pipeline, then you /must/ use the functions exported from
--- the module "Control.Proxy.TCP.TLS.Safe" instead.
+-- the module "Pipes.Network.TCP.TLS.Safe" instead.
 --
 -- This module re-exports many functions and types from "Network.Simple.TCP.TLS"
 -- module in the @network-simple@ package. You might refer to that module for
 -- more documentation.
 
-module Control.Proxy.TCP.TLS (
+module Pipes.Network.TCP.TLS (
   -- * Client side
   -- $client-side
     S.connect
@@ -49,9 +51,9 @@ module Control.Proxy.TCP.TLS (
   ) where
 
 import           Control.Monad.Trans.Class
-import qualified Control.Proxy                  as P
-import           Control.Proxy.TCP              (Timeout(..))
-import qualified Control.Proxy.Trans.Either     as PE
+import qualified Control.Monad.Trans.Error      as E
+import           Pipes
+import           Pipes.Network.TCP              (Timeout(..))
 import qualified Data.ByteString                as B
 import           Data.Monoid
 import qualified Network.Simple.TCP.TLS         as S
@@ -92,7 +94,7 @@ import           System.Timeout                 (timeout)
 -- Here's how you could run a simple TLS-secured TCP client:
 --
 -- @
--- import "Control.Proxy.TCP.TLS"
+-- import "Pipes.Network.TCP.TLS"
 --
 -- \ settings <- 'S.getDefaultClientSettings'
 -- 'S.connect' settings \"www.example.org\" \"443\" $ \(tlsCtx, remoteAddr) -> do
@@ -111,7 +113,7 @@ import           System.Timeout                 (timeout)
 -- to be used at that hostname.
 --
 -- @
--- import "Control.Proxy.TCP.TLS"
+-- import "Pipes.Network.TCP.TLS"
 -- import "Network.TLS.Extra" (fileReadCertificate, fileReadPrivateKey)
 --
 -- \ cert <- 'Network.TLS.Extra.fileReadCertificate' \"~/example.org.crt\"
@@ -133,7 +135,7 @@ import           System.Timeout                 (timeout)
 -- $socket-streaming
 --
 -- Once you have an established TLS connection 'T.Context', then you can use the
--- following 'P.Proxy's to interact with the other connection end using streams.
+-- following 'Proxy's to interact with the other connection end using streams.
 
 -- | Receives decrypted bytes from the remote end, sending them downstream.
 --
@@ -143,14 +145,13 @@ import           System.Timeout                 (timeout)
 -- If the remote peer closes its side of the connection or EOF is reached,
 -- this proxy returns.
 contextReadS
-  :: P.Proxy p
-  => T.Context          -- ^Established TLS connection context.
-  -> () -> P.Producer p B.ByteString IO ()
-contextReadS ctx = P.runIdentityK loop where
-    loop () = do
+  :: T.Context          -- ^Established TLS connection context.
+  -> () -> Producer B.ByteString IO ()
+contextReadS ctx = \() -> loop where
+    loop = do
       mbs <- lift (S.recv ctx)
       case mbs of
-        Just bs -> P.respond bs >>= loop
+        Just bs -> respond bs >> loop
         Nothing -> return ()
 {-# INLINABLE contextReadS #-}
 
@@ -161,14 +162,10 @@ contextReadS ctx = P.runIdentityK loop where
 --
 -- Requests from downstream are forwarded upstream.
 contextWriteD
-  :: P.Proxy p
-  => T.Context          -- ^Established TLS connection context.
-  -> x -> p x B.ByteString x B.ByteString IO r
-contextWriteD ctx = P.runIdentityK loop where
-    loop x = do
-      a <- P.request x
-      lift (S.send ctx a)
-      P.respond a >>= loop
+  :: T.Context          -- ^Established TLS connection context.
+  -> () -> Consumer B.ByteString IO r
+contextWriteD ctx = \() -> forever $ do
+      lift . S.send ctx =<< request ()
 {-# INLINABLE contextWriteD #-}
 
 --------------------------------------------------------------------------------
@@ -182,17 +179,16 @@ contextWriteD ctx = P.runIdentityK loop where
 -- 'PE.EitherP' proxy transformer if receiving data from the remote end takes
 -- more time than specified.
 contextReadTimeoutS
-  :: P.Proxy p
-  => Int                -- ^Timeout in microseconds (1/10^6 seconds).
+  :: Int                -- ^Timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> () -> P.Producer (PE.EitherP Timeout p) B.ByteString IO ()
+  -> () -> Producer B.ByteString (E.ErrorT Timeout IO) ()
 contextReadTimeoutS wait ctx = loop where
     loop () = do
-      mmbs <- lift (timeout wait (S.recv ctx))
+      mmbs <- lift . lift . timeout wait $ S.recv ctx
       case mmbs of
-        Just (Just bs) -> P.respond bs >>= loop
+        Just (Just bs) -> respond bs >>= loop
         Just Nothing   -> return ()
-        Nothing        -> PE.throw ex
+        Nothing        -> lift (E.throwError ex)
     ex = Timeout $ "contextReadTimeoutS: " <> show wait <> " microseconds."
 {-# INLINABLE contextReadTimeoutS #-}
 
@@ -200,17 +196,15 @@ contextReadTimeoutS wait ctx = loop where
 -- 'PE.EitherP' proxy transformer if sending data to the remote end takes
 -- more time than specified.
 contextWriteTimeoutD
-  :: P.Proxy p
-  => Int                -- ^Timeout in microseconds (1/10^6 seconds).
+  :: Int                -- ^Timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> x -> (PE.EitherP Timeout p) x B.ByteString x B.ByteString IO r
-contextWriteTimeoutD wait ctx = loop where
-    loop x = do
-      a <- P.request x
-      m <- lift (timeout wait (S.send ctx a))
+  -> () -> Consumer B.ByteString (E.ErrorT Timeout IO) r
+contextWriteTimeoutD wait ctx = \() -> loop where
+    loop = do
+      m <- lift . lift . timeout wait . S.send ctx =<< request ()
       case m of
-        Just () -> P.respond a >>= loop
-        Nothing -> PE.throw ex
+        Just () -> loop
+        Nothing -> lift (E.throwError ex)
     ex = Timeout $ "contextWriteTimeoutD: " <> show wait <> " microseconds."
 {-# INLINABLE contextWriteTimeoutD #-}
 

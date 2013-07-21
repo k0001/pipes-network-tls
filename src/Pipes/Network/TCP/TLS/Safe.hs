@@ -1,20 +1,20 @@
 {-# LANGUAGE Rank2Types #-}
 
 -- | This module exports functions that allow you to use TLS-secured
--- TCP connections as 'P.Proxy' streams, as well as utilities to connect to a
+-- TCP connections as 'Proxy' streams, as well as utilities to connect to a
 -- TLS-enabled TCP server or running your own, possibly within the pipeline
 -- itself by relying on the facilities provided by 'P.ExceptionP' from the
 -- @pipes-safe@ library.
 --
 -- If you don't need to establish new TLS connections within your pipeline,
 -- then consider using the simpler and similar functions exported by
--- "Control.Proxy.TCP.TLS".
+-- "Pipes.Network.TCP.TLS".
 --
 -- This module re-exports many functions and types from "Network.Simple.TCP.TLS"
 -- module in the @network-simple@ package. You might refer to that module for
 -- more documentation.
 
-module Control.Proxy.TCP.TLS.Safe (
+module Pipes.Network.TCP.TLS.Safe (
   -- * Client side
   -- $client-side
     connect
@@ -60,9 +60,9 @@ module Control.Proxy.TCP.TLS.Safe (
 import           Control.Concurrent              (ThreadId)
 import qualified Control.Exception               as E
 import           Control.Monad
-import qualified Control.Proxy                   as P
-import qualified Control.Proxy.Safe              as P
-import           Control.Proxy.TCP.Safe          (listen, Timeout(..))
+import           Pipes
+import qualified Pipes.Safe              as P
+import           Pipes.Network.TCP.Safe          (listen, Timeout(..))
 import qualified Data.ByteString                 as B
 import           Data.Monoid
 import qualified GHC.IO.Exception                as Eg
@@ -105,7 +105,7 @@ import           System.Timeout                  (timeout)
 -- Here's how you could run a simple TLS-secured TCP client:
 --
 -- @
--- import "Control.Proxy.TCP.TLS.Safe"
+-- import "Pipes.Network.TCP.TLS.Safe"
 --
 -- \ settings <- 'S.getDefaultClientSettings'
 -- 'connect' settings \"www.example.org\" \"443\" $ \(tlsCtx, remoteAddr) -> do
@@ -128,20 +128,19 @@ import           System.Timeout                  (timeout)
 -- need to manage the lifetime of the connection resources yourself, then use
 -- 'S.connectTls' instead.
 connect
-  :: (P.Proxy p, Monad m)
-  => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
-  -> S.ClientSettings              -- ^TLS settings.
+  :: P.MonadSafe m
+  => S.ClientSettings              -- ^TLS settings.
   -> NS.HostName                   -- ^Server hostname.
   -> NS.ServiceName                -- ^Server service port.
-  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
+  -> ((T.Context, NS.SockAddr) -> Proxy a' a b' b m r)
                           -- ^Computation to run in a different thread
                           -- once a TLS-secured connection is established. Takes
                           -- the TLS connection context and remote end address.
-  -> P.ExceptionP p a' a b' b m r
-connect morph cs host port  k = do
-    P.bracket morph (S.connectTls cs host port)
-                    (contextCloseNoVanish . fst)
-                    (useTls morph k)
+  -> Proxy  a' a b' b m r
+connect cs host port  k = do
+    P.bracket (S.connectTls cs host port)
+              (contextCloseNoVanish . fst)
+              (useTls k)
 
 --------------------------------------------------------------------------------
 
@@ -168,14 +167,14 @@ connect morph cs host port  k = do
 --
 -- The connection is closed when done or in case of exceptions.
 connectReadS
-  :: P.Proxy p
+  :: P.MonadSafe m
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ClientSettings   -- ^TLS settings.
   -> NS.HostName
   -> NS.ServiceName     -- ^Server service port.
-  -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
+  -> () -> Producer B.ByteString m ()
 connectReadS mwait cs host port = \() -> do
-   connect id cs host port $ \(ctx,_) -> do
+   connect cs host port $ \(ctx,_) -> do
      contextReadS mwait ctx ()
 
 -- | Connects to a TLS-secured TCP server, encrypts and sends to the remote end
@@ -189,14 +188,14 @@ connectReadS mwait cs host port = \() -> do
 --
 -- The connection is properly closed when done or in case of exceptions.
 connectWriteD
-  :: P.Proxy p
+  :: P.MonadSafe m
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ClientSettings   -- ^TLS settings.
   -> NS.HostName        -- ^Server host name.
   -> NS.ServiceName     -- ^Server service port.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
+  -> () -> Consumer B.ByteString m r
 connectWriteD mwait cs hp port = \x -> do
-   connect id cs hp port $ \(ctx,_) ->
+   connect cs hp port $ \(ctx,_) ->
      contextWriteD mwait ctx x
 
 --------------------------------------------------------------------------------
@@ -209,7 +208,7 @@ connectWriteD mwait cs hp port = \x -> do
 -- to be used at that hostname.
 --
 -- @
--- import "Control.Proxy.TCP.TLS.Safe"
+-- import "Pipes.Network.TCP.TLS.Safe"
 -- import "Network.TLS.Extra" (fileReadCertificate, fileReadPrivateKey)
 --
 -- \ cert <- 'Network.TLS.Extra.fileReadCertificate' \"~/example.org.crt\"
@@ -243,9 +242,8 @@ connectWriteD mwait cs hp port = \x -> do
 -- a TLS handshake and then safely closes the connection. You don't need to
 -- perform any of those steps manually.
 serve
-  :: (P.Proxy p, Monad m)
-  => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
-  -> S.ServerSettings              -- ^TLS settings.
+  :: P.MonadSafe m
+  => S.ServerSettings              -- ^TLS settings.
   -> S.HostPreference              -- ^Preferred host to bind.
   -> NS.ServiceName                -- ^Service port to bind.
   -> ((T.Context, NS.SockAddr) -> IO ())
@@ -253,10 +251,10 @@ serve
                           -- once an incomming connection is accepted and a
                           -- TLS-secured communication is established. Takes the
                           -- TLS connection context and remote end address.
-  -> P.ExceptionP p a' a b' b m r
-serve morph ss hp port k = do
-   listen morph hp port $ \(lsock,_) -> do
-     forever $ acceptFork morph ss lsock k
+  -> Proxy a' a b' b m r
+serve ss hp port k = do
+   listen hp port $ \(lsock,_) -> do
+     forever $ acceptFork ss lsock k
 
 --------------------------------------------------------------------------------
 
@@ -267,36 +265,34 @@ serve morph ss hp port k = do
 --
 -- The connection properly closed when done or in case of exceptions.
 accept
-  :: (P.Proxy p, Monad m)
-  => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
-  -> S.ServerSettings              -- ^TLS settings.
+  :: P.MonadSafe m
+  => S.ServerSettings              -- ^TLS settings.
   -> NS.Socket                     -- ^Listening and bound socket.
-  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
+  -> ((T.Context, NS.SockAddr) -> Proxy a' a b' b m r)
                           -- ^Computation to run once an incomming connection is
                           -- accepted and a TLS-secured communication is
                           -- established. Takes the TLS connection context and
                           -- remote end address.
-  -> P.ExceptionP p a' a b' b m r
-accept morph ss lsock k = do
-    P.bracket morph (S.acceptTls ss lsock)
-                    (contextCloseNoVanish . fst)
-                    (useTls morph k)
+  -> Proxy a' a b' b m r
+accept ss lsock k = do
+    P.bracket (S.acceptTls ss lsock)
+              (contextCloseNoVanish . fst)
+              (useTls k)
 {-# INLINABLE accept #-}
 
 -- | Like 'accept', except it uses a different thread to performs the TLS
 -- handshake and run the given computation.
 acceptFork
-  :: (P.Proxy p, Monad m)
-  => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
-  -> S.ServerSettings              -- ^TLS settings.
+  :: P.MonadSafe m
+  => S.ServerSettings              -- ^TLS settings.
   -> NS.Socket                     -- ^Listening and bound socket.
   -> ((T.Context, NS.SockAddr) -> IO ())
                           -- ^Computation to run in a different thread
                           -- once an incomming connection is accepted and a
                           -- TLS-secured communication is established. Takes the
                           -- TLS connection context and remote end address.
-  -> P.ExceptionP p a' a b' b m ThreadId
-acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
+  -> Proxy a' a b' b m ThreadId
+acceptFork ss lsock k = P.tryIO $ S.acceptFork ss lsock k
 {-# INLINABLE acceptFork #-}
 
 --------------------------------------------------------------------------------
@@ -325,15 +321,15 @@ acceptFork morph ss lsock k = P.hoist morph . P.tryIO $ S.acceptFork ss lsock k
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
 serveReadS
-  :: P.Proxy p
+  :: P.MonadSafe m
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
-  -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
+  -> () -> Producer B.ByteString m ()
 serveReadS mwait ss hp port = \() -> do
-   listen id hp port $ \(lsock,_) -> do
-     accept id ss lsock $ \(csock,_) -> do
+   listen hp port $ \(lsock,_) -> do
+     accept ss lsock $ \(csock,_) -> do
        contextReadS mwait csock ()
 
 -- | Binds a listening TCP socket, accepts a single TLS-secured connection,
@@ -351,15 +347,15 @@ serveReadS mwait ss hp port = \() -> do
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
 serveWriteD
-  :: P.Proxy p
+  :: P.MonadSafe m
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> NS.ServiceName     -- ^Service port to bind.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
+  -> () -> Consumer B.ByteString m r
 serveWriteD mwait ss hp port = \x -> do
-   listen id hp port $ \(lsock,_) -> do
-     accept id ss lsock $ \(csock,_) -> do
+   listen hp port $ \(lsock,_) -> do
+     accept ss lsock $ \(csock,_) -> do
        contextWriteD mwait csock x
 
 --------------------------------------------------------------------------------
@@ -367,7 +363,7 @@ serveWriteD mwait ss hp port = \x -> do
 -- $socket-streaming
 --
 -- Once you have a an established TLS 'T.Context', you can use the following
--- 'P.Proxy's to interact with the other connection end using pipes streams.
+-- 'Proxy's to interact with the other connection end using pipes streams.
 
 --------------------------------------------------------------------------------
 
@@ -383,23 +379,23 @@ serveWriteD mwait ss hp port = \x -> do
 -- If the remote peer closes its side of the connection or EOF is reached, this
 -- proxy returns.
 contextReadS
-  :: P.Proxy p
+  :: P.MonadSafe m
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> () -> P.Producer (P.ExceptionP p) B.ByteString P.SafeIO ()
+  -> () -> Producer B.ByteString m ()
 contextReadS Nothing ctx = loop where
     loop () = do
       mbs <- P.tryIO (S.recv ctx)
       case mbs of
         Nothing -> return ()
-        Just bs -> P.respond bs >>= loop
+        Just bs -> respond bs >>= loop
 contextReadS (Just wait) ctx = loop where
     loop () = do
       mmbs <- P.tryIO (timeout wait (S.recv ctx))
       case mmbs of
         Nothing        -> P.throw ex
         Just Nothing   -> return ()
-        Just (Just bs) -> P.respond bs >>= loop
+        Just (Just bs) -> respond bs >>= loop
     ex = Timeout $ "contextReadS: " <> show wait <> " microseconds."
 {-# INLINABLE contextReadS #-}
 
@@ -414,22 +410,18 @@ contextReadS (Just wait) ctx = loop where
 --
 -- Requests from downstream are forwarded upstream.
 contextWriteD
-  :: P.Proxy p
+  :: P.MonadSafe m
   => Maybe Int          -- ^Optional timeout in microseconds (1/10^6 seconds).
   -> T.Context          -- ^Established TLS connection context.
-  -> x -> (P.ExceptionP p) x B.ByteString x B.ByteString P.SafeIO r
-contextWriteD Nothing ctx = loop where
-    loop x = do
-      a <- P.request x
-      P.tryIO (S.send ctx a)
-      P.respond a >>= loop
-contextWriteD (Just wait) ctx = loop where
-    loop x = do
-      a <- P.request x
-      m <- P.tryIO (timeout wait (S.send ctx a))
-      case m of
-        Just () -> P.respond a >>= loop
-        Nothing -> P.throw ex
+  -> () -> Consumer B.ByteString m r
+contextWriteD Nothing ctx = \() -> forever $ do
+    lift . P.tryIO . S.send ctx =<< request ()
+contextWriteD (Just wait) ctx = \() -> loop where
+    loop = do
+        m <- lift . P.tryIO . timeout wait . S.send ctx =<< request ()
+        case m of
+          Just () -> loop
+          Nothing -> lift (P.throw ex)
     ex = Timeout $ "contextWriteD: " <> show wait <> " microseconds."
 {-# INLINABLE contextWriteD #-}
 
@@ -446,12 +438,11 @@ contextWriteD (Just wait) ctx = loop where
 -- This function discards 'Eg.ResourceVanished' exceptions that will happen when
 -- trying to say 'T.bye' if the remote end has done it before.
 useTls
-  :: (Monad m, P.Proxy p)
-  => (forall x. P.SafeIO x -> m x) -- ^Monad morphism.
-  -> ((T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r)
-  -> (T.Context, NS.SockAddr) -> P.ExceptionP p a' a b' b m r
-useTls morph k = \conn@(ctx,_) -> do
-    P.bracket_ morph (T.handshake ctx) (byeNoVanish ctx) (k conn)
+  :: P.MonadSafe m
+  => ((T.Context, NS.SockAddr) -> Proxy a' a b' b m r)
+  -> (T.Context, NS.SockAddr) -> Proxy a' a b' b m r
+useTls k = \conn@(ctx,_) -> do
+    P.bracket_ (T.handshake ctx) (byeNoVanish ctx) (k conn)
 {-# INLINABLE useTls #-}
 
 
