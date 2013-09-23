@@ -1,91 +1,37 @@
 {-# LANGUAGE RankNTypes #-}
 
 -- | This module exports functions that allow you to use TLS-secured
--- TCP connections as streams, as well as utilities to connect to a
--- TLS-enabled TCP server or running your own.
+-- TCP connections in a streaming fashion, as well as utilities to connect to a
+-- TLS-enabled TCP server or running your own. It is meant to be used together
+-- with the "Network.Simple.TCP.TLS" module from the @network-simple-tls@
+-- package, which is completely re-exported from this module.
 --
--- If you need to safely connect to a TLS-enabled TCP server or run your own
--- /within/ a pipes pipeline, then you /must/ use the functions exported from
--- the module "Pipes.Network.TCP.TLS.Safe" instead.
---
--- This module re-exports many functions and types from "Network.Simple.TCP.TLS"
--- module in the @network-simple@ package. You might refer to that module for
--- more documentation.
+-- This module /does not/ export facilities that would allow you to establish
+-- new connections within a pipeline. If you need to do so, then you should use
+-- "Pipes.Network.TCP.TLS.Safe" instead, which exports a similar API to the one
+-- exported by this module. Don't be confused by the word “safe” in that module;
+-- this module is equally safe to use as long as you don't try to acquire new
+-- resources within the pipeline.
 
 module Pipes.Network.TCP.TLS (
-  -- * Client side
-  -- $client-side
-    S.connect
-  , S.ClientSettings
-  , S.getDefaultClientSettings
-  , S.makeClientSettings
-
-  -- * Server side
-  -- $server-side
-  , S.serve
-  , S.ServerSettings
-  , S.makeServerSettings
-  -- ** Listening
-  , S.listen
-  -- ** Accepting
-  , S.accept
-  , S.acceptFork
-
-  -- * TLS context streams
-  -- $socket-streaming
-  , contextReadS
-  , contextWriteD
-  -- ** Timeouts
-  -- $socket-streaming-timeout
-  , contextReadTimeoutS
-  , contextWriteTimeoutD
-
-  -- * Note to Windows users
-  -- $windows-users
-  , S.withSocketsDo
-
+  -- * Receiving
+  -- $receiving
+    fromContext
+  , fromContextTimeout
+  -- * Sending
+  -- $sending
+  , toContext
+  , toContextTimeout
   -- * Exports
-  , S.HostPreference(..)
-  , S.Credential(..)
-  , Timeout(..)
+  -- $exports
+  , module Network.Simple.TCP.TLS
   ) where
 
-import           Control.Monad.Trans.Class
-import qualified Control.Monad.Trans.Error      as E
 import           Pipes
-import           Pipes.Network.TCP              (Timeout(..))
 import qualified Data.ByteString                as B
-import           Data.Monoid
-import qualified Network.Simple.TCP.TLS         as S
-import qualified Network.TLS                    as T
+import           Foreign.C.Error                (errnoToIOError, eTIMEDOUT)
+import           Network.Simple.TCP.TLS
 import           System.Timeout                 (timeout)
-
---------------------------------------------------------------------------------
-
--- $windows-users
---
--- If you are running Windows, then you /must/ call 'S.withSocketsDo', just
--- once, right at the beginning of your program. That is, change your program's
--- 'main' function from:
---
--- @
--- main = do
---   print \"Hello world\"
---   -- rest of the program...
--- @
---
--- To:
---
--- @
--- main = 'S.withSocketsDo' $ do
---   print \"Hello world\"
---   -- rest of the program...
--- @
---
--- If you don't do this, your networking code won't work and you will get many
--- unexpected errors at runtime. If you use an operating system other than
--- Windows then you don't need to do this, but it is harmless to do it, so it's
--- recommended that you do for portability reasons.
 
 --------------------------------------------------------------------------------
 
@@ -94,13 +40,13 @@ import           System.Timeout                 (timeout)
 -- Here's how you could run a simple TLS-secured TCP client:
 --
 -- @
--- import "Pipes.Network.TCP.TLS"
+-- import qualified "Pipes.Network.TCP.TLS"  as TLS
 --
--- \ settings <- 'S.getDefaultClientSettings'
--- 'S.connect' settings \"www.example.org\" \"443\" $ \(tlsCtx, remoteAddr) -> do
+-- \ settings <- 'getDefaultClientSettings'
+-- 'connect' settings \"www.example.org\" \"443\" $ \(tlsCtx, remoteAddr) -> do
 --   putStrLn $ \"Secure connection established to \" ++ show remoteAddr
 --   -- now you may use tlsCtx as you please within this scope, possibly with
---   -- the 'contextReadS' or 'contextWriteD' proxies explained below.
+--   -- the 'fromContext' or 'toContext' proxies explained below.
 -- @
 
 --------------------------------------------------------------------------------
@@ -113,98 +59,122 @@ import           System.Timeout                 (timeout)
 -- to be used at that hostname.
 --
 -- @
--- import "Pipes.Network.TCP.TLS"
+-- import qualified "Pipes.Network.TCP.TLS"  as TLS
 -- import "Network.TLS.Extra" (fileReadCertificate, fileReadPrivateKey)
 --
 -- \ cert <- 'Network.TLS.Extra.fileReadCertificate' \"~/example.org.crt\"
 -- pkey <- 'Network.TLS.Extra.fileReadPrivateKey'  \"~/example.org.key\"
--- let cred = 'S.Credential' cert pkey []
---     settings = 'S.makeServerSettings' cred Nothing
+-- let cred = 'Credential' cert pkey []
+--     settings = 'makeServerSettings' cred Nothing
 --
--- \ 'S.serve' settings ('S.Host' \"example.org\") \"4433\" $ \(tlsCtx, remoteAddr) -> do
+-- \ 'serve' settings ('Host' \"example.org\") \"4433\" $ \(tlsCtx, remoteAddr) -> do
 --   putStrLn $ \"Secure connection established from \" ++ show remoteAddr
 --   -- now you may use tlsCtx as you please within this scope, possibly with
---   -- the 'contextReadS' or 'contextWriteD' proxies explained below.
+--   -- the 'fromContext' or 'toContext' proxies explained below.
 -- @
 --
 -- If you need more control on the way your server runs, then you can use more
--- advanced functions such as 'S.listen', 'S.accept' and 'S.acceptFork'.
+-- advanced functions such as 'listen', 'accept' or 'acceptFork'.
 
 --------------------------------------------------------------------------------
 
--- $socket-streaming
+-- $sending
 --
--- Once you have an established TLS connection 'T.Context', then you can use the
--- following 'Proxy's to interact with the other connection end using streams.
+-- The following pipes allow you to send bytes to the remote end over a
+-- TLS-secured TCP connection.
+--
+-- Besides the pipes below, you might want to use "Network.Simple.TCP.TLS"'s
+-- 'Network.Simple.TCP.TLS.send', which happens to be an 'Effect'':
+--
+-- @
+-- 'TLS.send' :: 'MonadIO' m => 'Socket' -> 'B.ByteString' -> 'Effect'' m ()
+-- @
 
--- | Receives decrypted bytes from the remote end, sending them downstream.
+
+-- | Encrypts and sends to the remote end each 'B.ByteString' received from
+-- upstream.
+toContext
+  :: MonadIO m
+  => Context          -- ^Established TLS connection context.
+  -> Consumer B.ByteString m r
+toContext ctx = for cat (\a -> send ctx a)
+{-# INLINABLE toContext #-}
+
+-- | Like 'toContext', except with the first 'Int' argument you can specify
+-- the maximum time that each interaction with the remote end can take. If such
+-- time elapses before the interaction finishes, then an 'IOError' exception is
+-- thrown. The time is specified in microseconds (10e6).
+toContextTimeout
+  :: MonadIO m
+  => Int              -- ^Timeout in microseconds (1/10^6 seconds).
+  -> Context          -- ^Established TLS connection context.
+  -> Consumer B.ByteString m r
+toContextTimeout wait ctx = for cat $ \a -> do
+    mu <- liftIO $ timeout wait (send ctx a)
+    case mu of
+       Just () -> return ()
+       Nothing -> liftIO $ ioError $ errnoToIOError
+          "Pipes.Network.TCP.TLS.toContextTimeout" eTIMEDOUT Nothing Nothing
+{-# INLINABLE toContextTimeout #-}
+
+--------------------------------------------------------------------------------
+
+-- $receiving
 --
--- Up to @16384@ decrypted bytes will be received at once. The TLS connection is
--- automatically renegotiated if a /ClientHello/ message is received.
+-- The following pipes allow you to receive bytes from the remote end over a
+-- TLS-secured TCP connection.
 --
--- If the remote peer closes its side of the connection or EOF is reached,
--- this proxy returns.
-contextReadS
-  :: T.Context          -- ^Established TLS connection context.
-  -> () -> Producer B.ByteString IO ()
-contextReadS ctx = \() -> loop where
+-- Besides the pipes below, you might want to use "Network.Simple.TCP.TLS"'s
+-- 'TLS.recv', which happens to be an 'Effect'':
+--
+-- @
+-- 'TLS.recv' :: 'MonadIO' m => 'TLS.Context' -> 'Int' -> 'Effect'' m ('Maybe' 'B.ByteString')
+-- @
+
+
+-- | Receives decrypted bytes from the remote end and sends them downstream.
+--
+-- The number of bytes received at once is always in the interval
+-- /[1 .. 16384]/.
+--
+-- The TLS connection is automatically renegotiated if a /ClientHello/ message
+-- is received.
+--
+-- This 'Producer'' returns if the remote peer closes its side of the connection
+-- or EOF is received.
+fromContext
+  :: MonadIO m
+  => Context          -- ^Established TLS connection context.
+  -> Producer B.ByteString m ()
+fromContext ctx = loop where
     loop = do
-      mbs <- lift (S.recv ctx)
+      mbs <- recv ctx
       case mbs of
-        Just bs -> respond bs >> loop
         Nothing -> return ()
-{-# INLINABLE contextReadS #-}
+        Just bs -> yield bs >> loop
+{-# INLINABLE fromContext #-}
 
--- | Encrypts and sends to the remote end the bytes received from upstream,
--- then forwards such same bytes downstream.
---
--- If the remote peer closes its side of the connection, this proxy returns.
---
--- Requests from downstream are forwarded upstream.
-contextWriteD
-  :: T.Context          -- ^Established TLS connection context.
-  -> () -> Consumer B.ByteString IO r
-contextWriteD ctx = \() -> forever $ do
-      lift . S.send ctx =<< request ()
-{-# INLINABLE contextWriteD #-}
+-- | Like 'fromContext', except with the first 'Int' argument you can specify
+-- the maximum time that each interaction with the remote end can take. If such
+-- time elapses before the interaction finishes, then an 'IOError' exception is
+-- thrown. The time is specified in microseconds (10e6).
+fromContextTimeout
+  :: MonadIO m
+  => Int              -- ^Timeout in microseconds (1/10^6 seconds).
+  -> Context          -- ^Established TLS connection context.
+  -> Producer B.ByteString m ()
+fromContextTimeout wait ctx = loop where
+    loop = do
+      mmbs <- liftIO $ timeout wait (recv ctx)
+      case mmbs of
+         Just (Just bs) -> yield bs >> loop
+         Just Nothing   -> return ()
+         Nothing        -> liftIO $ ioError $ errnoToIOError
+            "Pipes.Network.TCP.TLS.fromContextTimeout" eTIMEDOUT Nothing Nothing
+{-# INLINABLE fromContextTimeout #-}
 
 --------------------------------------------------------------------------------
 
--- $socket-streaming-timeout
---
--- These proxies behave like the similarly named ones above, except they support
--- timing out the interaction with the remote end.
+-- $exports
 
--- | Like 'contextReadS', except it throws a 'Timeout' exception in the
--- 'PE.EitherP' proxy transformer if receiving data from the remote end takes
--- more time than specified.
-contextReadTimeoutS
-  :: Int                -- ^Timeout in microseconds (1/10^6 seconds).
-  -> T.Context          -- ^Established TLS connection context.
-  -> () -> Producer B.ByteString (E.ErrorT Timeout IO) ()
-contextReadTimeoutS wait ctx = loop where
-    loop () = do
-      mmbs <- lift . lift . timeout wait $ S.recv ctx
-      case mmbs of
-        Just (Just bs) -> respond bs >>= loop
-        Just Nothing   -> return ()
-        Nothing        -> lift (E.throwError ex)
-    ex = Timeout $ "contextReadTimeoutS: " <> show wait <> " microseconds."
-{-# INLINABLE contextReadTimeoutS #-}
-
--- | Like 'contextWriteD', except it throws a 'Timeout' exception in the
--- 'PE.EitherP' proxy transformer if sending data to the remote end takes
--- more time than specified.
-contextWriteTimeoutD
-  :: Int                -- ^Timeout in microseconds (1/10^6 seconds).
-  -> T.Context          -- ^Established TLS connection context.
-  -> () -> Consumer B.ByteString (E.ErrorT Timeout IO) r
-contextWriteTimeoutD wait ctx = \() -> loop where
-    loop = do
-      m <- lift . lift . timeout wait . S.send ctx =<< request ()
-      case m of
-        Just () -> loop
-        Nothing -> lift (E.throwError ex)
-    ex = Timeout $ "contextWriteTimeoutD: " <> show wait <> " microseconds."
-{-# INLINABLE contextWriteTimeoutD #-}
-
+-- The entire "Network.Simple.TCP.TLS" module is exported.
