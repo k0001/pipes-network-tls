@@ -4,12 +4,12 @@
 -- TCP connections in a streaming fashion, as well as utilities to connect to a
 -- TLS-enabled TCP server or running your own.
 --
--- You are encouraged to use this module together with "Pipes.Network.TCP.TLS"
--- and "Network.Simple.TCP.TLS" as follows:
+-- You are encouraged to use this module together with "Network.Simple.TCP.TLS"
+-- as follows:
 --
 -- @
--- import qualified "Network.Simple.TCP.TLS"     as TLS hiding (connect, serve, listen, accept)
--- import qualified "Pipes.Network.TCP.TLS"      as TLS
+-- import qualified "Network.Simple.TCP.TLS" as TLS
+-- import qualified "Pipes.Network.TCP.TLS"  as TLS
 -- @
 --
 -- This module /does not/ export facilities that would allow you to establish
