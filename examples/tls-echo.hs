@@ -4,42 +4,41 @@
 module Main (main) where
 
 import           Control.Applicative
-import           Control.Proxy              ((>->))
-import qualified Control.Proxy              as P
-import           Control.Proxy.TCP.TLS      (contextReadS, contextWriteD)
+import           Pipes
+import qualified Pipes.Prelude              as P
 import qualified Data.ByteString.Char8      as B
 import           Data.Certificate.X509      (X509)
 import           Data.Char                  (toUpper)
 import           Data.Monoid                ((<>))
-import qualified Network.Simple.TCP.TLS     as Z
-import qualified Network.Socket             as NS
-import qualified Network.TLS                as T
+import qualified Network.Simple.TCP.TLS     as TLS
+import qualified Pipes.Network.TCP.TLS      as TLS
 import           Network.TLS.Extra          as TE
+import qualified Network.TLS                as T
 import           System.Console.GetOpt
 import           System.Environment         (getProgName, getArgs)
 import qualified Data.CertificateStore      as C
 
-server :: Z.Credential -> Z.HostPreference -> NS.ServiceName
+server :: TLS.Credential -> TLS.HostPreference -> TLS.ServiceName
        -> Maybe C.CertificateStore -> IO ()
 server cred hp port mcs = do
-    let ss = Z.makeServerSettings cred mcs
-    Z.serve ss hp port $ \(ctx,caddr) -> do
+    let ss = TLS.makeServerSettings cred mcs
+    TLS.serve ss hp port $ \(ctx,caddr) -> do
        putStrLn $ show caddr <> " joined."
-       P.runProxy $ contextReadS ctx >-> P.mapD (B.map toUpper) >-> contextWriteD ctx
+       runEffect $ TLS.fromContext ctx >-> P.map (B.map toUpper) >-> TLS.toContext ctx
        putStrLn $ show caddr <> " quit."
 
 main :: IO ()
-main = Z.withSocketsDo $ do
+main = TLS.withSocketsDo $ do
     args <- getArgs
     case getOpt RequireOrder options args of
       (actions, [hostname,port], _) -> do
         opts <- foldl (>>=) (return defaultOptions) actions
-        let !cred = Z.Credential (optServerCert opts) (optServerKey opts) []
-        server cred (Z.Host hostname) port
+        let !cred = TLS.Credential (optServerCert opts) (optServerKey opts) []
+        server cred (TLS.Host hostname) port
                (C.makeCertificateStore . pure <$> optCACert opts)
       (_,_,msgs) -> do
         pn <- getProgName
-        let header = "Usage: " <> pn <> " [OPTIONS] HOSTNAME PORT"
+        let header = "Usage: " <> pn <> " [OPTIOTLS] HOSTNAME PORT"
         error $ concat msgs ++ usageInfo header options
 
 --------------------------------------------------------------------------------
