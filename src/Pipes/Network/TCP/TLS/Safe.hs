@@ -5,10 +5,6 @@
 -- release TLS-secured TCP connections within a /Pipes/ pipeline, by relying on
 -- @pipes-safe@.
 --
--- If you don't need to establish new TLS connections within your pipeline,
--- then consider using the simpler and similar functions exported by
--- "Pipes.Network.TCP.TLS".
---
 -- This module is meant to be used together with "Pipes.Network.TCP.TLS", and it
 -- overrides some functions from "Network.Simple.TCP" so that they support
 -- 'P.MonadSafe'. Additionally, it also exports pipes that establish a
@@ -40,8 +36,6 @@ module Pipes.Network.TCP.TLS.Safe (
   -- $server-streaming
   , fromServe
   , toServe
-  -- ** Exports
-  -- FromSo
   ) where
 
 

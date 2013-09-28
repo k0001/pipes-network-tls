@@ -1,8 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 
 -- | This module exports functions that allow you to use TLS-secured
--- TCP connections in a streaming fashion, as well as utilities to connect to a
--- TLS-enabled TCP server or running your own.
+-- TCP connections in a streaming fashion.
 --
 -- You are encouraged to use this module together with "Network.Simple.TCP.TLS"
 -- as follows:
@@ -90,7 +89,7 @@ import           System.Timeout                 (timeout)
 -- 'Network.Simple.TCP.TLS.send', which happens to be an 'Effect'':
 --
 -- @
--- 'TLS.send' :: 'MonadIO' m => 'Socket' -> 'B.ByteString' -> 'Effect'' m ()
+-- 'TLS.send' :: 'MonadIO' m => 'TLS.Context' -> 'B.ByteString' -> 'Effect'' m ()
 -- @
 
 
@@ -131,7 +130,7 @@ toContextTimeout wait ctx = for cat $ \a -> do
 -- 'TLS.recv', which happens to be an 'Effect'':
 --
 -- @
--- 'TLS.recv' :: 'MonadIO' m => 'TLS.Context' -> 'Int' -> 'Effect'' m ('Maybe' 'B.ByteString')
+-- 'TLS.recv' :: 'MonadIO' m => 'TLS.Context' -> 'Effect'' m ('Maybe' 'B.ByteString')
 -- @
 
 
