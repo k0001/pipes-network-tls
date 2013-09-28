@@ -2,9 +2,15 @@
 
 -- | This module exports functions that allow you to use TLS-secured
 -- TCP connections in a streaming fashion, as well as utilities to connect to a
--- TLS-enabled TCP server or running your own. It is meant to be used together
--- with the "Network.Simple.TCP.TLS" module from the @network-simple-tls@
--- package, which is completely re-exported from this module.
+-- TLS-enabled TCP server or running your own.
+--
+-- You are encouraged to use this module together with "Pipes.Network.TCP.TLS"
+-- and "Network.Simple.TCP.TLS" as follows:
+--
+-- @
+-- import qualified "Network.Simple.TCP.TLS"     as TLS hiding (connect, serve, listen, accept)
+-- import qualified "Pipes.Network.TCP.TLS"      as TLS
+-- @
 --
 -- This module /does not/ export facilities that would allow you to establish
 -- new connections within a pipeline. If you need to do so, then you should use
@@ -22,9 +28,6 @@ module Pipes.Network.TCP.TLS (
   -- $sending
   , toContext
   , toContextTimeout
-  -- * Exports
-  -- $exports
-  , module Network.Simple.TCP.TLS
   ) where
 
 import           Pipes
@@ -96,7 +99,7 @@ import           System.Timeout                 (timeout)
 toContext
   :: MonadIO m
   => Context          -- ^Established TLS connection context.
-  -> Consumer B.ByteString m r
+  -> Consumer' B.ByteString m r
 toContext ctx = for cat (\a -> send ctx a)
 {-# INLINABLE toContext #-}
 
@@ -108,7 +111,7 @@ toContextTimeout
   :: MonadIO m
   => Int              -- ^Timeout in microseconds (1/10^6 seconds).
   -> Context          -- ^Established TLS connection context.
-  -> Consumer B.ByteString m r
+  -> Consumer' B.ByteString m r
 toContextTimeout wait ctx = for cat $ \a -> do
     mu <- liftIO $ timeout wait (send ctx a)
     case mu of
@@ -145,7 +148,7 @@ toContextTimeout wait ctx = for cat $ \a -> do
 fromContext
   :: MonadIO m
   => Context          -- ^Established TLS connection context.
-  -> Producer B.ByteString m ()
+  -> Producer' B.ByteString m ()
 fromContext ctx = loop where
     loop = do
       mbs <- recv ctx
@@ -162,7 +165,7 @@ fromContextTimeout
   :: MonadIO m
   => Int              -- ^Timeout in microseconds (1/10^6 seconds).
   -> Context          -- ^Established TLS connection context.
-  -> Producer B.ByteString m ()
+  -> Producer' B.ByteString m ()
 fromContextTimeout wait ctx = loop where
     loop = do
       mmbs <- liftIO $ timeout wait (recv ctx)
