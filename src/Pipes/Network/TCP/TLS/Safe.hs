@@ -40,13 +40,13 @@ module Pipes.Network.TCP.TLS.Safe (
 
 
 import           Control.Monad                   (forever)
-import           Pipes
-import qualified Pipes.Safe                      as P
 import           Data.ByteString                 (ByteString)
 import qualified Network.Simple.TCP.TLS          as S
+import           Network.TLS                     (contextClose)
+import           Pipes
 import           Pipes.Network.TCP.Safe          (listen)
 import           Pipes.Network.TCP.TLS           (fromContext, toContext)
-import           Network.TLS                     (contextClose)
+import qualified Pipes.Safe                      as P
 
 --------------------------------------------------------------------------------
 
