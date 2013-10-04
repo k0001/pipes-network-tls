@@ -17,7 +17,6 @@ extra-source-files:
   README.md
   PEOPLE
   examples/tls-echo.hs
-  examples/tls-tunnel.hs
 description:
   Use TLS-secured network connections together with the @pipes@ ecosystem.
   .
