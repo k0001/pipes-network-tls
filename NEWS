@@ -1,4 +1,4 @@
-# Version HEAD
+# Version 0.2.0
 
 * Significantly upgraded the API and renamed functions to play well with
   pipes-4.0, pipes-safe-2.0, pipes-network-0.6 and
