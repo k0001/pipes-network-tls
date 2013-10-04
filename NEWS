@@ -1,3 +1,13 @@
+# Version HEAD
+
+* Significantly upgraded the API and renamed functions to play well with
+  pipes-4.0, pipes-safe-2.0, pipes-network-0.6 and
+  network-simple-tls-0.2.
+
+* Throw `IOError` in `IO` in order to report timeout errors. Delete
+  the `Timeout` data-type.
+
+
 # Version 0.1.1.0
 
 * Re-export `Network.Socket.withSocketsDo`
