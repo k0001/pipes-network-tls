@@ -16,7 +16,7 @@ effort.
 
 ## Building the development version
 
-Use [cabal-meta](http://hackage.haskell.org/package/cabal-meta) and
-[cabal-dev](http://hackage.haskell.org/package/cabal-dev):
+Use [cabal-meta](http://hackage.haskell.org/package/cabal-meta):
 
-    cabal-meta --dev install
+    cabal sandbox init
+    cabal-meta install -j
