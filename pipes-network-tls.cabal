@@ -46,7 +46,7 @@ library
         network,
         network-simple      (>=0.3 && <0.4),
         network-simple-tls  (>=0.2 && <0.3),
-        pipes               (>=4.0 && <4.1),
+        pipes               (>=4.0 && <4.2),
         pipes-network       (>=0.6 && <0.7),
         pipes-safe          (>=2.0 && <2.1),
         tls                 (>=1.1 && <1.2),
