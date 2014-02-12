@@ -58,7 +58,7 @@ import qualified Pipes.Safe                      as P
 -- | Like 'Network.Simple.TCP.TLS.connect' from "Network.Simple.TCP.TLS", but
 -- compatible with 'P.MonadSafe'.
 connect
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ClientSettings -> S.HostName -> S.ServiceName
   -> ((S.Context, S.SockAddr) -> m r) -> m r
 connect cs host port k = P.bracket (S.connectTls cs host port)
@@ -68,7 +68,7 @@ connect cs host port k = P.bracket (S.connectTls cs host port)
 -- | Like 'Network.Simple.TCP.TLS.serve' from "Network.Simple.TCP.TLS", but
 -- compatible with 'P.MonadSafe'.
 serve
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ServerSettings -> S.HostPreference -> S.ServiceName
   -> ((S.Context, S.SockAddr) -> IO ()) -> m r
 serve ss hp port k = do
@@ -78,7 +78,7 @@ serve ss hp port k = do
 -- | Like 'Network.Simple.TCP.TLS.accept' from "Network.Simple.TCP.TLS", but
 -- compatible with 'P.MonadSafe'.
 accept
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ServerSettings -> S.Socket -> ((S.Context, S.SockAddr) -> m r) -> m r
 accept ss lsock k = P.bracket (S.acceptTls ss lsock)
                               (liftIO . contextClose . fst)
@@ -106,7 +106,7 @@ accept ss lsock k = P.bracket (S.acceptTls ss lsock)
 --
 -- The connection is closed when done or in case of exceptions.
 fromConnect
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ClientSettings   -- ^TLS settings.
   -> S.HostName
   -> S.ServiceName      -- ^Server service port.
@@ -120,7 +120,7 @@ fromConnect cs host port = do
 --
 -- The connection is properly closed when done or in case of exceptions.
 toConnect
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ClientSettings   -- ^TLS settings.
   -> S.HostName         -- ^Server host name.
   -> S.ServiceName      -- ^Server service port.
@@ -151,7 +151,7 @@ toConnect cs hp port = do
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
 fromServe
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> S.ServiceName      -- ^Service port to bind.
@@ -169,7 +169,7 @@ fromServe ss hp port = do
 -- Both the listening and connection sockets are closed when done or in case of
 -- exceptions.
 toServe
-  :: (P.MonadSafe m, P.Base m ~ IO)
+  :: P.MonadSafe m
   => S.ServerSettings   -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> S.ServiceName      -- ^Service port to bind.
