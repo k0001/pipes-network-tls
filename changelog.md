@@ -1,6 +1,12 @@
-# Version HEAD
+# Version 0.3
+
+* BREAKING CHANGE: We now depend on `network-simple-0.3`, which introduced some
+  breaking changes. Please refer to its
+  [changelog](https://hackage.haskell.org/package/network-simple-0.3/changelog).
 
 * Remove `Pipes.Safe.Base m ~ IO` constraints.
+
+* Remove upper-bound constraints on all dependencies other than `base`.
 
 
 # Version 0.2.1

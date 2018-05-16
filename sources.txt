@@ -1,3 +1,0 @@
-./
-git://github.com/k0001/network-simple-tls.git master
-
