@@ -3,11 +3,11 @@
 let
 src-pipes-network = builtins.fetchGit {
   url = "https://github.com/k0001/pipes-network";
-  rev = "9e08bab046a8132f06ebdfefa6b0184a457877c0";
+  rev = "9268b3a42856889fe3c189e271297be9967be9d6";
 };
 src-network-simple-tls = builtins.fetchGit {
   url = "https://github.com/k0001/network-simple-tls";
-  rev = "caa207faaa7f48c846780d164fffbafa7b2de612";
+  rev = "eb22f05e231bf783bf7f252d6ac3ca2b183baeb8";
 };
 
 in
