@@ -1,3 +1,12 @@
+# Version 0.4
+
+*: COMPILER ASSISTED BREAKING CHANGE: We now depend on
+  `network-simple-0.4`, which introduced some breaking changes. In
+  `pipes-network-tls`, we merely replaced uses of `ClientSettings` and
+  `ServerSettings` for `ClientParams` and `ServerParams`.  Please refer
+  to its [changelog](https://hackage.haskell.org/package/network-simple-0.4/changelog).
+
+
 # Version 0.3
 
 * BREAKING CHANGE: We now depend on `network-simple-0.3`, which introduced some

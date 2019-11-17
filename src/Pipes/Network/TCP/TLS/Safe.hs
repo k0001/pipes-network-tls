@@ -59,7 +59,7 @@ import qualified Pipes.Safe                      as P
 -- compatible with 'P.MonadSafe'.
 connect
   :: P.MonadSafe m
-  => S.ClientSettings -> S.HostName -> S.ServiceName
+  => S.ClientParams -> S.HostName -> S.ServiceName
   -> ((S.Context, S.SockAddr) -> m r) -> m r
 connect cs host port k = P.bracket (S.connectTls cs host port)
                                    (liftIO . contextClose . fst)
@@ -69,7 +69,7 @@ connect cs host port k = P.bracket (S.connectTls cs host port)
 -- compatible with 'P.MonadSafe'.
 serve
   :: P.MonadSafe m
-  => S.ServerSettings -> S.HostPreference -> S.ServiceName
+  => S.ServerParams -> S.HostPreference -> S.ServiceName
   -> ((S.Context, S.SockAddr) -> IO ()) -> m r
 serve ss hp port k = do
    listen hp port $ \(lsock,_) -> do
@@ -79,7 +79,7 @@ serve ss hp port k = do
 -- compatible with 'P.MonadSafe'.
 accept
   :: P.MonadSafe m
-  => S.ServerSettings -> S.Socket -> ((S.Context, S.SockAddr) -> m r) -> m r
+  => S.ServerParams -> S.Socket -> ((S.Context, S.SockAddr) -> m r) -> m r
 accept ss lsock k = P.bracket (S.acceptTls ss lsock)
                               (liftIO . contextClose . fst)
                               (S.useTls k)
@@ -107,7 +107,7 @@ accept ss lsock k = P.bracket (S.acceptTls ss lsock)
 -- The connection is closed when done or in case of exceptions.
 fromConnect
   :: P.MonadSafe m
-  => S.ClientSettings   -- ^TLS settings.
+  => S.ClientParams     -- ^TLS settings.
   -> S.HostName
   -> S.ServiceName      -- ^Server service port.
   -> Producer' ByteString m ()
@@ -121,7 +121,7 @@ fromConnect cs host port = do
 -- The connection is properly closed when done or in case of exceptions.
 toConnect
   :: P.MonadSafe m
-  => S.ClientSettings   -- ^TLS settings.
+  => S.ClientParams     -- ^TLS settings.
   -> S.HostName         -- ^Server host name.
   -> S.ServiceName      -- ^Server service port.
   -> Consumer' ByteString m ()
@@ -152,7 +152,7 @@ toConnect cs hp port = do
 -- exceptions.
 fromServe
   :: P.MonadSafe m
-  => S.ServerSettings   -- ^TLS settings.
+  => S.ServerParams     -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> S.ServiceName      -- ^Service port to bind.
   -> Producer' ByteString m ()
@@ -170,7 +170,7 @@ fromServe ss hp port = do
 -- exceptions.
 toServe
   :: P.MonadSafe m
-  => S.ServerSettings   -- ^TLS settings.
+  => S.ServerParams     -- ^TLS settings.
   -> S.HostPreference   -- ^Preferred host to bind.
   -> S.ServiceName      -- ^Service port to bind.
   -> Consumer' ByteString m r

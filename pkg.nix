@@ -4,7 +4,7 @@
 }:
 mkDerivation {
   pname = "pipes-network-tls";
-  version = "0.3";
+  version = "0.4";
   src = ./.;
   libraryHaskellDepends = [
     base bytestring network network-simple network-simple-tls pipes
