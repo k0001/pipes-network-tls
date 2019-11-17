@@ -7,7 +7,7 @@ src-pipes-network = builtins.fetchGit {
 };
 src-network-simple-tls = builtins.fetchGit {
   url = "https://github.com/k0001/network-simple-tls";
-  rev = "eb22f05e231bf783bf7f252d6ac3ca2b183baeb8";
+  rev = "97a07544c2a504ff9f0d38b4b4ddf26286949b71";
 };
 
 in

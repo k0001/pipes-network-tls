@@ -2,8 +2,8 @@
 
 let
 pkgs = import nixpkgs {};
-ghc841 = pkgs.haskell.packages.ghc841.override {
+ghc865 = pkgs.haskell.packages.ghc865.override {
   packageSetConfig = import ./hs-overlay.nix { inherit pkgs; };
 };
 
-in { inherit (ghc841) pipes-network-tls; }
+in { inherit (ghc865) pipes-network-tls; }
